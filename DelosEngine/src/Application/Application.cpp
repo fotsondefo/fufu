@@ -2,7 +2,8 @@
 #include "Delos/Application.h"
 #include <GLFW/glfw3.h>
 
-namespace Delos {
+namespace Delos 
+{
 
 	Application* Application::s_Instance = nullptr;
 
