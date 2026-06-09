@@ -1,0 +1,41 @@
+{
+  "version": 6,
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
+    },
+    {
+      "name": "debug",
+      "displayName": "Debug",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "release",
+      "displayName": "Release",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "release-no-studio",
+      "displayName": "Release (Runtime only)",
+      "inherits": "release",
+      "cacheVariables": {
+        "DELOS_BUILD_STUDIO": "OFF"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "debug",            "configurePreset": "debug" },
+    { "name": "release",          "configurePreset": "release" },
+    { "name": "release-no-studio","configurePreset": "release-no-studio" }
+  ]
+}

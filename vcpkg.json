@@ -1,0 +1,13 @@
+{
+  "name": "delos",
+  "version": "0.1.0",
+  "dependencies": [
+    "glfw3",
+    "spdlog",
+    "entt",
+    "yaml-cpp",
+    "assimp",
+    "imgui",
+    "opengl"
+  ]
+}
