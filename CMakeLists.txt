@@ -1,20 +1,22 @@
 cmake_minimum_required(VERSION 3.12)
-project(Delos VERSION 0.1.0 LANGUAGES CXX)
+project(Fufu VERSION 0.1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 # Output directories centralisés
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/build/lib)
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/build/lib)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/build/bin)
 
 # Options de build
-option(DELOS_BUILD_STUDIO  "Build DelosStudio (éditeur)"  ON)
-option(DELOS_BUILD_RUNTIME "Build DelosRuntime"            ON)
+option(FUFU_BUILD_STUDIO  "Build FufuStudio (Editor)"  ON)
+option(FUFU_BUILD_RUNTIME "Build FufuRuntime"          ON)
 
 # Dépendances externes via vcpkg ou find_package
+find_package(OpenGL REQUIRED)
+
 include(FetchContent)
 
 # GLFW
@@ -87,12 +89,12 @@ if(NOT assimp_POPULATED)
 endif()
 
 # Sous-projets
-add_subdirectory(DelosEngine)
+add_subdirectory(FufuEngine)
 
-if(DELOS_BUILD_STUDIO)
-    add_subdirectory(DelosStudio)
+if(FUFU_BUILD_STUDIO)
+    add_subdirectory(FufuStudio)
 endif()
-
-if(DELOS_BUILD_RUNTIME)
-    add_subdirectory(DelosRuntime)
-endif()
+#
+#if(FUFU_BUILD_RUNTIME)
+#    add_subdirectory(FufuRuntime)
+#endif()

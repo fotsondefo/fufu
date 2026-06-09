@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Usage: ./configure.sh [debug|release] [options CMake supplémentaires]
 #   ./configure.sh debug
-#   ./configure.sh release -DDELOS_BUILD_STUDIO=OFF
+#   ./configure.sh release -DFUFU_BUILD_STUDIO=OFF
 
 BUILD_TYPE=${1:-debug}
 shift || true

@@ -1,7 +1,7 @@
 #pragma once
 #include "Event.h"
 
-namespace Delos 
+namespace Fufu 
 {
 
 	class MouseMovedEvent : public Event
@@ -12,8 +12,8 @@ namespace Delos
 		float getX() const { return m_X; }
 		float getY() const { return m_Y; }
 
-		DELOS_EVENT_TYPE(MouseMoved)
-			DELOS_EVENT_CATEGORY(EventCategoryInput | EventCategoryMouse)
+		FUFU_EVENT_TYPE(MouseMoved)
+			FUFU_EVENT_CATEGORY(EventCategoryInput | EventCategoryMouse)
 
 	private:
 		float m_X, m_Y;
@@ -28,8 +28,8 @@ namespace Delos
 		float getXOffset() const { return m_XOffset; }
 		float getYOffset() const { return m_YOffset; }
 
-		DELOS_EVENT_TYPE(MouseScrolled)
-			DELOS_EVENT_CATEGORY(EventCategoryInput | EventCategoryMouse)
+		FUFU_EVENT_TYPE(MouseScrolled)
+			FUFU_EVENT_CATEGORY(EventCategoryInput | EventCategoryMouse)
 
 	private:
 		float m_XOffset, m_YOffset;
@@ -39,7 +39,7 @@ namespace Delos
 	{
 	public:
 		int getButton() const { return m_Button; }
-		DELOS_EVENT_CATEGORY(EventCategoryInput | EventCategoryMouse | EventCategoryMouseButton)
+		FUFU_EVENT_CATEGORY(EventCategoryInput | EventCategoryMouse | EventCategoryMouseButton)
 
 	protected:
 		explicit MouseButtonEvent(int button) : m_Button(button) {}
@@ -50,14 +50,14 @@ namespace Delos
 	{
 	public:
 		explicit MouseButtonPressedEvent(int button) : MouseButtonEvent(button) {}
-		DELOS_EVENT_TYPE(MouseButtonPressed)
+		FUFU_EVENT_TYPE(MouseButtonPressed)
 	};
 
 	class MouseButtonReleasedEvent : public MouseButtonEvent
 	{
 	public:
 		explicit MouseButtonReleasedEvent(int button) : MouseButtonEvent(button) {}
-		DELOS_EVENT_TYPE(MouseButtonReleased)
+		FUFU_EVENT_TYPE(MouseButtonReleased)
 	};
 
 }

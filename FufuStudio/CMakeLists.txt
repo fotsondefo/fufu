@@ -1,3 +1,8 @@
+project(FufuStudio
+		VERSION 0.1.0
+		LANGUAGES CXX
+)
+
 include(FetchContent)
 
 FetchContent_Declare(
@@ -27,28 +32,30 @@ target_include_directories(imgui PUBLIC
 
 target_link_libraries(imgui PUBLIC glfw OpenGL::GL)
 
-# DelosStudio
-add_executable(DelosStudio
-    src/main.cpp
-    src/StudioApp.cpp
-    src/panels/ViewportPanel.cpp
-    src/panels/HierarchyPanel.cpp
-    src/panels/InspectorPanel.cpp
-    src/panels/AssetPanel.cpp
+# List PROJECT_HEADERS
+file(GLOB_RECURSE PROJECT_HEADERS
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/*.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/*.hpp"
 )
 
-target_include_directories(DelosStudio PRIVATE
+# List PROJECT_SOURCES
+set(PROJECT_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/EditorMain.cpp)
+file(GLOB_RECURSE REC_SOURCES_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
+list(APPEND PROJECT_SOURCES ${REC_SOURCES_DIR})
+
+# FufuStudio
+add_executable(${PROJECT_NAME} ${PROJECT_SOURCES})
+
+target_include_directories(FufuStudio PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
-target_link_libraries(DelosStudio PRIVATE
-    Delos::Engine
+target_link_libraries(FufuStudio PRIVATE
+    Fufu::Engine
     imgui
 )
 
-add_custom_command(TARGET DelosStudio POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_SOURCE_DIR}/assets
-        $<TARGET_FILE_DIR:DelosStudio>/assets
-    COMMENT "Copie des assets vers le répertoire de sortie"
+add_custom_command(TARGET FufuStudio POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:FufuStudio>/assets
+    COMMENT "Création du dossier assets"
 )

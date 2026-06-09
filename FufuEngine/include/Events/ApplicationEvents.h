@@ -1,15 +1,17 @@
 #pragma once
-#include "Event.h"
 
-namespace Delos {
+#include "Event.h"
+#include <string>
+
+namespace Fufu {
 
 	class WindowCloseEvent : public Event
 	{
 	public:
 		WindowCloseEvent() = default;
 
-		DELOS_EVENT_TYPE(WindowClose)
-			DELOS_EVENT_CATEGORY(EventCategoryApplication)
+		FUFU_EVENT_TYPE(WindowClose)
+			FUFU_EVENT_CATEGORY(EventCategoryApplication)
 	};
 
 	class WindowResizeEvent : public Event
@@ -26,8 +28,8 @@ namespace Delos {
 			return "WindowResizeEvent: " + std::to_string(m_Width) + "x" + std::to_string(m_Height);
 		}
 
-		DELOS_EVENT_TYPE(WindowResize)
-			DELOS_EVENT_CATEGORY(EventCategoryApplication)
+		FUFU_EVENT_TYPE(WindowResize)
+			FUFU_EVENT_CATEGORY(EventCategoryApplication)
 
 	private:
 		unsigned int m_Width, m_Height;

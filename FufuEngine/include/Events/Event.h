@@ -1,6 +1,6 @@
 #pragma once
 
-namespace Delos 
+namespace Fufu 
 {
 	enum class EventType
 	{
@@ -31,13 +31,13 @@ namespace Delos
 		EventCategoryMouseButton = 1 << 4
 	};
 
-	// Macros pour éviter le boilerplate dans chaque sous-classe
-#define DELOS_EVENT_TYPE(type) \
+	// Macros pour ï¿½viter le boilerplate dans chaque sous-classe
+#define FUFU_EVENT_TYPE(type) \
     static EventType getStaticType() { return EventType::type; } \
     virtual EventType getEventType() const override { return getStaticType(); } \
     virtual const char* getName() const override { return #type; }
 
-#define DELOS_EVENT_CATEGORY(category) \
+#define FUFU_EVENT_CATEGORY(category) \
     virtual int getCategoryFlags() const override { return category; }
 
 	class Event

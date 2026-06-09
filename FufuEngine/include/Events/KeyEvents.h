@@ -1,14 +1,14 @@
 #pragma once
 #include "Event.h"
 
-namespace Delos 
+namespace Fufu 
 {
 
 	class KeyEvent : public Event
 	{
 	public:
 		int getKeyCode() const { return m_KeyCode; }
-		DELOS_EVENT_CATEGORY(EventCategoryInput | EventCategoryKeyboard)
+		FUFU_EVENT_CATEGORY(EventCategoryInput | EventCategoryKeyboard)
 
 	protected:
 		explicit KeyEvent(int keyCode) : m_KeyCode(keyCode) {}
@@ -23,7 +23,7 @@ namespace Delos
 
 		bool isRepeat() const { return m_IsRepeat; }
 
-		DELOS_EVENT_TYPE(KeyPressed)
+		FUFU_EVENT_TYPE(KeyPressed)
 
 	private:
 		bool m_IsRepeat;
@@ -33,14 +33,14 @@ namespace Delos
 	{
 	public:
 		explicit KeyReleasedEvent(int keyCode) : KeyEvent(keyCode) {}
-		DELOS_EVENT_TYPE(KeyReleased)
+		FUFU_EVENT_TYPE(KeyReleased)
 	};
 
 	class KeyTypedEvent : public KeyEvent
 	{
 	public:
 		explicit KeyTypedEvent(int keyCode) : KeyEvent(keyCode) {}
-		DELOS_EVENT_TYPE(KeyTyped)
+		FUFU_EVENT_TYPE(KeyTyped)
 	};
 
 }

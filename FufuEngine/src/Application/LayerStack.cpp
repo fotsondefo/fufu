@@ -1,7 +1,7 @@
 #include "depch.h"
 #include "Application/LayerStack.h"
 
-namespace Delos
+namespace Fufu
 {
 	LayerStack::~LayerStack()
 	{
@@ -20,7 +20,7 @@ namespace Delos
 		layer->onAttach();
 	}
 
-	void Layer::pushOverlay()(Layer* overlay)
+	void LayerStack::pushOverlay(Layer* overlay)
 	{
 		m_Layers.emplace_back(overlay);
 
@@ -46,7 +46,7 @@ namespace Delos
 		if (it != m_Layers.end())
 		{
 			overlay->onDetach();
-			overlay.erase(it);
+			m_Layers.erase(it);
 		}
 	}
 }

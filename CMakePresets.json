@@ -29,7 +29,7 @@
       "displayName": "Release (Runtime only)",
       "inherits": "release",
       "cacheVariables": {
-        "DELOS_BUILD_STUDIO": "OFF"
+        "FUFU_BUILD_STUDIO": "OFF"
       }
     }
   ],
