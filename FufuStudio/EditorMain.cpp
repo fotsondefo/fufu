@@ -1,18 +1,17 @@
-#include "EntryPoint.h"
+#include <EntryPoint.h>
+#include "Layers/StudioLayer.h"
 
-namespace Fufu
+class FufuStudioApp : public Fufu::Application
 {
-	class FufuStudio : public Application
+public:
+	FufuStudioApp()
 	{
-	public:
-		FufuStudio() : Application() {}
-
-		~FufuStudio() = default;
-	};
-}
+		pushLayer(new FufuStudio::StudioLayer());
+	}
+};
 
 
 Fufu::Application* CreateApplication()
 {
-	return new Fufu::FufuStudio();
+	return new FufuStudioApp();
 }

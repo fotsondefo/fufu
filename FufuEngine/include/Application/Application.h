@@ -4,6 +4,7 @@
 #include "LayerStack.h"
 #include "Window.h"
 #include "Events/ApplicationEvents.h"
+#include "Renderer/Renderer.h"
 
 namespace Fufu 
 {
@@ -21,21 +22,24 @@ namespace Fufu
 		void pushOverlay(Layer* overlay);
 
 		static Application& get() { return *s_Instance; }
-		Window& getWindow() { return *m_Window; }
+		Window&             getWindow() { return *m_Window; }
+		Renderer&           getRenderer() { return m_Renderer; }
 
 	private:
 		void onEvent(Event& e);
 		bool onWindowClose(WindowCloseEvent& e);
+		bool onWindowResize(WindowResizeEvent& e);
 
 	private:
 		std::unique_ptr<Window> m_Window;
-		LayerStack m_LayerStack;
-		bool m_Running = true;
-		float m_LastFrameTime = 0.0f;
+		LayerStack              m_LayerStack;
+		Renderer                m_Renderer;
+		bool                    m_Running = true;
+		bool                    m_Minimized = false;
+		float                   m_LastFrameTime = 0.0f;
 
-		static Application* s_Instance;
+		static Application*     s_Instance;
 	};
 
 	Application* CreateApplication();
-
 }
