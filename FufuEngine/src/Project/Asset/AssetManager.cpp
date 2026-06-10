@@ -1,5 +1,5 @@
 #include "depch.h"
-#include "Fufu/Assets/AssetManager.h"
+#include "Project/Assets/AssetManager.h"
 #include <nlohmann/json.hpp>
 #include <assimp/Importer.hpp>
 #include <assimp/scene.h>
@@ -7,6 +7,8 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 #include <fstream>
+#include <glm/vec2.hpp>
+#include <glm/vec3.hpp>
 
 using json = nlohmann::json;
 

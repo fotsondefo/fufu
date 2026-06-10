@@ -30,7 +30,7 @@ target_include_directories(imgui PUBLIC
     ${imgui_SOURCE_DIR}/backends
 )
 
-target_link_libraries(imgui PUBLIC glfw OpenGL::GL)
+target_link_libraries(imgui PUBLIC glfw Fufu::Engine)
 
 # List PROJECT_HEADERS
 file(GLOB_RECURSE PROJECT_HEADERS

@@ -5,6 +5,7 @@
 namespace Fufu 
 {
 
+	// Forward declaration — évite l'inclusion circulaire avec Scene.h
 	class Scene;
 
 	class Entity
@@ -15,43 +16,21 @@ namespace Fufu
 			: m_Handle(handle), m_Scene(scene) {}
 
 		template<typename T, typename... Args>
-		T& addComponent(Args&&... args)
-		{
-			FUFU_ASSERT(!hasComponent<T>(), "Entity already has this component");
-			return m_Scene->m_Registry.emplace<T>(m_Handle, std::forward<Args>(args)...);
-		}
+		T& addComponent(Args&&... args);
 
 		template<typename T>
-		T& getComponent()
-		{
-			FUFU_ASSERT(hasComponent<T>(), "Entity does not have this component");
-			return m_Scene->m_Registry.get<T>(m_Handle);
-		}
+		T& getComponent();
 
 		template<typename T>
-		const T& getComponent() const
-		{
-			FUFU_ASSERT(hasComponent<T>(), "Entity does not have this component");
-			return m_Scene->m_Registry.get<T>(m_Handle);
-		}
+		const T& getComponent() const;
 
 		template<typename T>
-		bool hasComponent() const
-		{
-			return m_Scene->m_Registry.all_of<T>(m_Handle);
-		}
+		bool hasComponent() const;
 
 		template<typename T>
-		void removeComponent()
-		{
-			FUFU_ASSERT(hasComponent<T>(), "Entity does not have this component");
-			m_Scene->m_Registry.remove<T>(m_Handle);
-		}
+		void removeComponent();
 
-		bool isValid() const
-		{
-			return m_Scene && m_Scene->m_Registry.valid(m_Handle);
-		}
+		bool isValid() const;
 
 		entt::entity getHandle() const { return m_Handle; }
 
@@ -61,9 +40,12 @@ namespace Fufu
 
 	private:
 		entt::entity m_Handle = entt::null;
-		Scene*       m_Scene = nullptr;
+		Scene* m_Scene = nullptr;
 
 		friend class Scene;
 	};
 
 }
+
+// Inclusion différée — à ce stade Scene est déjà déclaré
+#include "EntityImpl.h"

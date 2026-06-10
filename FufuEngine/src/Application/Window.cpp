@@ -3,7 +3,6 @@
 #include "Events/ApplicationEvents.h"
 #include "Events/KeyEvents.h"
 #include "Events/MouseEvents.h"
-#include <GLFW/glfw3.h>
 
 namespace Fufu 
 {
@@ -49,6 +48,10 @@ namespace Fufu
 		++s_GLFWWindowCount;
 
 		glfwMakeContextCurrent(m_Window);
+
+		int gladStatus = gladLoadGLLoader((GLADloadproc)glfwGetProcAddress);
+		FUFU_ASSERT(gladStatus, "Failed to initialize GLAD");
+
 		glfwSetWindowUserPointer(m_Window, &m_Data);
 		setVSync(true);
 

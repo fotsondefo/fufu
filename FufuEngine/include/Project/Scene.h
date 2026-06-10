@@ -39,6 +39,7 @@ namespace Fufu
 		std::string    m_Name = "Untitled";
 
 		friend class Entity;
+		friend class SceneSerializer;
 	};
 
 }

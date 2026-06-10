@@ -1,10 +1,11 @@
 #pragma once
 
 #include "Asset.h"
+#include <glm/vec2.hpp>
+#include <glm/vec3.hpp>
 
 namespace Fufu 
 {
-
 	struct Vertex
 	{
 		glm::vec3 position;
@@ -15,9 +16,9 @@ namespace Fufu
 
 	struct SubMesh
 	{
-		std::vector<Vertex>       vertices;
-		std::vector<uint32_t>     indices;
-		std::string               name;
+		std::vector<Vertex> vertices;
+		std::vector<uint32_t> indices;
+		std::string name;
 	};
 
 	class MeshAsset : public Asset
@@ -32,5 +33,4 @@ namespace Fufu
 		std::vector<SubMesh> m_SubMeshes;
 		friend class AssetManager;
 	};
-
 }

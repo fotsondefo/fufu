@@ -222,4 +222,4 @@ namespace Fufu {
 		return true;
 	}
 
-} // namespace Fufu
+}

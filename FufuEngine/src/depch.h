@@ -17,6 +17,8 @@
 #include <spdlog/spdlog.h>
 
 // Core
+#include <glad/glad.h>
+#define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
 #include "Events/Event.h"
 #include "Events/ApplicationEvents.h"

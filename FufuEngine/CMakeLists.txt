@@ -1,6 +1,6 @@
 project(FufuEngine
 		VERSION 0.1.0
-		LANGUAGES CXX
+		LANGUAGES CXX C
 )
 
 # List PROJECT_HEADERS
@@ -25,6 +25,14 @@ target_include_directories(FufuEngine
         ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
+# glad comme cible séparée en C pur — sans PCH C++
+add_library(glad_internal STATIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/vendor/glad/src/glad.c
+)
+target_include_directories(glad_internal PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/vendor/glad/include
+)
+
 FetchContent_Declare(
     glm
     GIT_REPOSITORY https://github.com/g-truc/glm.git
@@ -34,6 +42,12 @@ FetchContent_GetProperties(glm)
 if(NOT glm_POPULATED)
     FetchContent_Populate(glm)
     add_subdirectory(${glm_SOURCE_DIR} ${glm_BINARY_DIR})
+endif()
+
+if(TARGET glm)
+    target_compile_options(glm INTERFACE
+        $<$<CXX_COMPILER_ID:MSVC>:/W0>
+    )
 endif()
 
 FetchContent_Declare(
@@ -46,6 +60,7 @@ if(NOT nlohmann_json_POPULATED)
     FetchContent_Populate(nlohmann_json)
     add_subdirectory(${nlohmann_json_SOURCE_DIR} ${nlohmann_json_BINARY_DIR})
 endif()
+
 
 
 FetchContent_Declare(
@@ -62,14 +77,14 @@ target_include_directories(FufuEngine PUBLIC ${stb_SOURCE_DIR})
 
 target_link_libraries(FufuEngine
     PUBLIC
-        OpenGL::GL
+        glad_internal
         glfw
         spdlog::spdlog
         EnTT::EnTT
-        # yaml-cpp::yaml-cpp
+        nlohmann_json::nlohmann_json
         assimp::assimp
-		glm
-		nlohmann_json::nlohmann_json
+        glm
+        $<$<PLATFORM_ID:Windows>:opengl32>
 )
 
 target_compile_options(FufuEngine PRIVATE
