@@ -13,7 +13,7 @@ namespace Fufu
 		FUFU_ASSERT(!s_Instance, "Application already exists!");
 		s_Instance = this;
 
-		m_Window = std::make_unique<Window>(WindowProps{ "Fufu Engine", 1280, 720 });
+		m_Window = std::make_unique<Window>(WindowProps{ "Fufu Engine", 1920, 1080 });
 		m_Window->setEventCallback([this](Event& e) { onEvent(e); });
 
 		m_Renderer.init(1280, 720);

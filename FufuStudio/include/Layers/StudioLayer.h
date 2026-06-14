@@ -4,6 +4,8 @@
 #include "EditorState.h"
 #include "Panels/ViewportPanel.h"
 #include "Panels/RendererSettingsPanel.h"
+#include "Panels/HierarchyPanel.h"
+#include "Panels/InspectorPanel.h"
 
 namespace FufuStudio 
 {
@@ -26,9 +28,11 @@ namespace FufuStudio
 		void buildDockspace();
 
 	private:
-		EditorState            m_State;
-		ViewportPanel          m_ViewportPanel;
-		RendererSettingsPanel  m_RendererSettingsPanel;
+		EditorState m_State;
+		ViewportPanel m_ViewportPanel;
+		RendererSettingsPanel m_RendererSettingsPanel;
+		HierarchyPanel  m_HierarchyPanel;
+		InspectorPanel  m_InspectorPanel;
 	};
 
 } 

@@ -34,6 +34,8 @@ namespace Fufu
 		const std::string& getName() const { return m_Name; }
 		void               setName(const std::string& name) { m_Name = name; }
 
+		entt::registry& getRegistry() { return m_Registry; }
+
 	private:
 		entt::registry m_Registry;
 		std::string    m_Name = "Untitled";

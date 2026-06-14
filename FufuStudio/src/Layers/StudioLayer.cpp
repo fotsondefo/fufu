@@ -51,19 +51,18 @@ namespace FufuStudio
 
 	void StudioLayer::onUpdate(float deltaTime)
 	{
-		// Mise à jour caméra et sync scène
 		m_ViewportPanel.onUpdate(m_State, deltaTime);
 
-		// Rendu path tracing
 		if (m_State.activeScene)
 			Fufu::Application::get().getRenderer().renderScene(*m_State.activeScene);
 
-		// Frame ImGui
 		beginImGuiFrame();
 		buildDockspace();
 
 		m_ViewportPanel.onImGuiRender(m_State);
 		m_RendererSettingsPanel.onImGuiRender(m_State);
+		m_HierarchyPanel.onImGuiRender(m_State);    // <-- ajouter
+		m_InspectorPanel.onImGuiRender(m_State);    // <-- ajouter
 
 		endImGuiFrame();
 	}
