@@ -20,10 +20,9 @@ namespace FufuStudio
 	{
 		initImGui();
 
-		// Créer une scène de test avec une caméra et quelques entités
 		m_State.activeScene = std::make_shared<Fufu::Scene>("Default Scene");
 
-		// Caméra principale
+		// Main Camera
 		auto cam = m_State.activeScene->createEntity("Editor Camera");
 		auto& camComp = cam.addComponent<Fufu::CameraComponent>();
 		camComp.primary = true;
@@ -34,7 +33,7 @@ namespace FufuStudio
 
 		auto sphere = m_State.activeScene->createEntity("Test Sphere");
 		auto& mesh = sphere.addComponent<Fufu::MeshComponent>();
-		mesh.meshPath = "assets/meshes/sphere.obj"; // ton mesh de test
+		mesh.meshPath = "assets/meshes/sphere.obj";
 
 		auto& mat = sphere.addComponent<Fufu::MaterialComponent>();
 		mat.albedo = glm::vec4(0.8f, 0.2f, 0.2f, 1.f);
@@ -61,8 +60,8 @@ namespace FufuStudio
 
 		m_ViewportPanel.onImGuiRender(m_State);
 		m_RendererSettingsPanel.onImGuiRender(m_State);
-		m_HierarchyPanel.onImGuiRender(m_State);    // <-- ajouter
-		m_InspectorPanel.onImGuiRender(m_State);    // <-- ajouter
+		m_HierarchyPanel.onImGuiRender(m_State); 
+		m_InspectorPanel.onImGuiRender(m_State);   
 
 		endImGuiFrame();
 	}
@@ -123,7 +122,7 @@ namespace FufuStudio
 
 	void StudioLayer::buildDockspace()
 	{
-		// Version sans docking — fenêtre plein écran simple
+		// Version sans docking - fenêtre plein écran simple
 		ImGuiViewport* viewport = ImGui::GetMainViewport();
 		ImGui::SetNextWindowPos(viewport->Pos);
 		ImGui::SetNextWindowSize(viewport->Size);
