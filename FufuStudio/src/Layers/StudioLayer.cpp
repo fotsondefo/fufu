@@ -6,6 +6,7 @@
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
 #include <GLFW/glfw3.h>
+#include "SceneIO.h"
 
 namespace FufuStudio 
 {
@@ -50,6 +51,8 @@ namespace FufuStudio
 
 	void StudioLayer::onUpdate(float deltaTime)
 	{
+		handleKeyboardShortcuts();
+
 		m_ViewportPanel.onUpdate(m_State, deltaTime);
 
 		if (m_State.activeScene)
@@ -132,12 +135,82 @@ namespace FufuStudio
 			ImGuiWindowFlags_NoCollapse |
 			ImGuiWindowFlags_NoResize |
 			ImGuiWindowFlags_NoMove |
+			ImGuiWindowFlags_MenuBar |
 			ImGuiWindowFlags_NoBringToFrontOnFocus |
 			ImGuiWindowFlags_NoNavFocus |
 			ImGuiWindowFlags_NoBackground;
 
 		ImGui::Begin("MainWindow", nullptr, flags);
+
+		if (ImGui::BeginMenuBar())
+		{
+			if (ImGui::BeginMenu("File"))
+			{
+				if (ImGui::MenuItem("New Scene", "Ctrl+N"))
+					SceneIO::newScene(m_State);
+
+				if (ImGui::MenuItem("Open Scene...", "Ctrl+O"))
+					SceneIO::openScene(m_State);
+
+				ImGui::Separator();
+
+				if (ImGui::MenuItem("Save", "Ctrl+S"))
+					SceneIO::saveScene(m_State);
+
+				if (ImGui::MenuItem("Save As...", "Ctrl+Shift+S"))
+					SceneIO::saveSceneAs(m_State);
+
+				ImGui::Separator();
+
+				if (ImGui::MenuItem("Exit"))
+					Fufu::Application::get().close();
+
+				ImGui::EndMenu();
+			}
+
+			// Afficher le nom de la scène courante dans la barre
+			if (m_State.activeScene)
+			{
+				std::string title = m_State.activeScene->getName();
+				if (!m_State.currentPath.empty())
+					title += " — " + std::filesystem::path(
+						m_State.currentPath).filename().string();
+				else
+					title += " *";
+
+				ImGui::SetCursorPosX(
+					(ImGui::GetContentRegionAvail().x - ImGui::CalcTextSize(
+						title.c_str()).x) * 0.5f
+				);
+				ImGui::TextDisabled("%s", title.c_str());
+			}
+
+			ImGui::EndMenuBar();
+		}
+
 		ImGui::End();
+	}
+
+
+	void StudioLayer::handleKeyboardShortcuts()
+	{
+		ImGuiIO& io = ImGui::GetIO();
+
+		if (io.KeyCtrl)
+		{
+			if (ImGui::IsKeyPressed(ImGuiKey_S))
+			{
+				if (io.KeyShift)
+					SceneIO::saveSceneAs(m_State);
+				else
+					SceneIO::saveScene(m_State);
+			}
+			if (ImGui::IsKeyPressed(ImGuiKey_O))
+				SceneIO::openScene(m_State);
+
+			if (ImGui::IsKeyPressed(ImGuiKey_N))
+				SceneIO::newScene(m_State);
+		}
 	}
 
 }

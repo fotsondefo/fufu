@@ -15,6 +15,8 @@ namespace FufuStudio
 		// Entité sélectionnée dans la hiérarchie
 		Fufu::Entity selectedEntity;
 
+		std::string currentPath;
+
 		// Caméra éditeur
 		glm::vec3 cameraPosition = { 0.f, 1.f, 5.f };
 		glm::vec3 cameraRotation = { 0.f, 0.f, 0.f }; // pitch, yaw, roll en radians

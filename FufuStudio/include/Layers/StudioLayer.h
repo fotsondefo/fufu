@@ -26,6 +26,7 @@ namespace FufuStudio
 		void beginImGuiFrame();
 		void endImGuiFrame();
 		void buildDockspace();
+		void handleKeyboardShortcuts();
 
 	private:
 		EditorState m_State;

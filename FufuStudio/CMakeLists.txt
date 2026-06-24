@@ -50,6 +50,7 @@ target_include_directories(FufuStudio PRIVATE
 target_link_libraries(FufuStudio PRIVATE
     Fufu::Engine
     imgui
+	nfd
 )
 
 # PCH forcé — expose FUFU_ASSERT, macros log, STL à tous les .cpp de FufuStudio

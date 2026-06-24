@@ -88,6 +88,18 @@ if(NOT assimp_POPULATED)
     add_subdirectory(${assimp_SOURCE_DIR} ${assimp_BINARY_DIR})
 endif()
 
+# nativefiledialog
+FetchContent_Declare(
+    nfd
+    GIT_REPOSITORY https://github.com/btzy/nativefiledialog-extended.git
+    GIT_TAG        v1.1.1
+)
+FetchContent_GetProperties(nfd)
+if(NOT nfd_POPULATED)
+    FetchContent_Populate(nfd)
+    add_subdirectory(${nfd_SOURCE_DIR} ${nfd_BINARY_DIR})
+endif()
+
 # Sous-projets
 add_subdirectory(FufuEngine)
 
