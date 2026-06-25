@@ -106,7 +106,7 @@ add_subdirectory(FufuEngine)
 if(FUFU_BUILD_STUDIO)
     add_subdirectory(FufuStudio)
 endif()
-#
-#if(FUFU_BUILD_RUNTIME)
-#    add_subdirectory(FufuRuntime)
-#endif()
+
+if(FUFU_BUILD_RUNTIME)
+    add_subdirectory(FufuRuntime)
+endif()

@@ -1,9 +1,19 @@
+project(FufuRuntime
+	VERSION 0.1.0
+	LANGUAGES CXX
+)
+
+file(GLOB_RECURSE PROJECT_SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
+)
+
 add_executable(FufuRuntime
-    src/main.cpp
-    src/RuntimeApp.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/RuntimeMain.cpp
+    ${PROJECT_SOURCES}
 )
 
 target_include_directories(FufuRuntime PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
@@ -11,9 +21,14 @@ target_link_libraries(FufuRuntime PRIVATE
     Fufu::Engine
 )
 
-# Strip les symboles en release (target_link_options n'existe qu'en 3.13+)
-if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-    set_target_properties(FufuRuntime PROPERTIES
-        LINK_FLAGS_RELEASE "-s"
-    )
-endif()
+target_compile_options(FufuRuntime PRIVATE
+    $<$<CXX_COMPILER_ID:MSVC>:/FI${CMAKE_SOURCE_DIR}/FufuEngine/src/depch.h>
+    $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-include ${CMAKE_SOURCE_DIR}/FufuEngine/src/depch.h>
+)
+
+# Copier les assets à côté de l'exécutable
+add_custom_command(TARGET FufuRuntime POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory
+        $<TARGET_FILE_DIR:FufuRuntime>/assets
+    COMMENT "Création du dossier assets Runtime"
+)
