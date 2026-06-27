@@ -15,6 +15,8 @@ namespace FufuStudio
 		ImFont* codicons = nullptr;
 	};
 
+
+	// Docs : https://ocornut-imgui.mintlify.app/advanced/docking-viewports
 	class ImGuiContext
 	{
 	public:

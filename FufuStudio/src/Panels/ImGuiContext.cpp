@@ -4,34 +4,7 @@
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
 #include <GLFW/glfw3.h>
-
-#pragma region FontMacros
-
-// Ranges Unicode FontAwesome 6
-#define FA_MIN_CODEPOINT 0xe005
-#define FA_MAX_CODEPOINT 0xf8ff
-
-// Ranges Unicode Codicon
-#define CODICON_MIN_CODEPOINT 0xea60
-#define CODICON_MAX_CODEPOINT 0xebeb
-
-// Common macros for icons
-#define ICON_FA_FOLDER      "\xef\x81\xbb"
-#define ICON_FA_FILE        "\xef\x82\x9b"
-#define ICON_FA_SAVE        "\xef\x83\x87"
-#define ICON_FA_PLAY        "\xef\x81\x8b"
-#define ICON_FA_TRASH       "\xef\x87\xb8"
-#define ICON_FA_PLUS        "\xef\x81\xa7"
-#define ICON_FA_EYE         "\xef\x81\xae"
-#define ICON_FA_CUBE        "\xef\x86\xb2"
-#define ICON_FA_CAMERA      "\xef\x80\xb0"
-#define ICON_FA_COG         "\xef\x80\x93"
-
-#define ICON_CI_FILE        "\xea\x77"
-#define ICON_CI_FOLDER      "\xea\x83"
-#define ICON_CI_SETTINGS    "\xeb\x51"
-
-#pragma endregion
+#include "Helpers/FontIcons.h"
 
 
 namespace FufuStudio 
@@ -44,7 +17,7 @@ namespace FufuStudio
 		// Create the config dir if it doesn't exist
 		std::filesystem::create_directories(configDir);
 		m_LayoutPath = configDir / "layout.ini";
-		m_FontsDir = std::filesystem::current_path() / "assets" / "fonts";
+		m_FontsDir = configDir / "fonts";
 
 		// Init ImGui
 		IMGUI_CHECKVERSION();
@@ -72,7 +45,7 @@ namespace FufuStudio
 			applyDefaultLayout();
 
 		m_Initialized = true;
-		FUFU_INFO("ImGuiContext initialized — layout: '{}'", m_LayoutPath.string());
+		FUFU_INFO("ImGuiContext initialized â€” layout: '{}'", m_LayoutPath.string());
 	}
 
 	void ImGuiContext::shutdown()
@@ -90,6 +63,9 @@ namespace FufuStudio
 
 	void ImGuiContext::beginFrame()
 	{
+		glClearColor(0.13f, 0.14f, 0.15f, 1.f);
+		glClear(GL_COLOR_BUFFER_BIT);
+
 		ImGui_ImplOpenGL3_NewFrame();
 		ImGui_ImplGlfw_NewFrame();
 		::ImGui::NewFrame();
@@ -173,17 +149,19 @@ Collapsed=0
 
 		// Window / FRame shape
 		style.WindowRounding = 6.f;
+		style.WindowBorderSize = 1.f;
+		style.WindowPadding = ImVec2(8.f, 8.f);
+		style.WindowTitleAlign = ImVec2(0.5f, 0.5f);
+		style.WindowMenuButtonPosition = ImGuiDir_None;
 		style.ChildRounding = 4.f;
 		style.FrameRounding = 4.f;
 		style.GrabRounding = 4.f;
 		style.PopupRounding = 4.f;
 		style.ScrollbarRounding = 6.f;
 		style.TabRounding = 4.f;
-		style.WindowBorderSize = 1.f;
 		style.FrameBorderSize = 0.f;
 		style.ItemSpacing = ImVec2(8.f, 6.f);
-		style.FramePadding = ImVec2(6.f, 4.f);
-		style.WindowPadding = ImVec2(8.f, 8.f);
+		style.FramePadding = ImVec2(5.f, 5.f);
 		style.IndentSpacing = 18.f;
 
 		// Color palette VSCode Style : AI generated.
@@ -226,89 +204,86 @@ Collapsed=0
 		const float sizePx = 15.f;
 		const float sizeIconsPx = 13.f;
 
-		// --- Ranges glyphes ---
-		// FontAwesome
 		static const ImWchar k_FA_Ranges[] = { FA_MIN_CODEPOINT, FA_MAX_CODEPOINT, 0 };
-		// Codicon
 		static const ImWchar k_CI_Ranges[] = { CODICON_MIN_CODEPOINT, CODICON_MAX_CODEPOINT, 0 };
 
-		ImFontConfig config;
-		config.OversampleH = 2;
-		config.OversampleV = 2;
+		std::filesystem::path notoPath = fontsDir / "NotoSans-Regular.ttf";
+		std::filesystem::path notoBoldPath = fontsDir / "NotoSans-Bold.ttf";
+		std::filesystem::path notoMonoPath = fontsDir / "NotoSansMono-Regular.ttf";
+		std::filesystem::path faPath = fontsDir / "fa-solid-900.ttf";
+		std::filesystem::path ciPath = fontsDir / "codicon.ttf";
 
 		// ---- NotoSans Regular ----
-		std::filesystem::path notoPath = fontsDir / "NotoSans-Regular.ttf";
+		ImFontConfig regularConfig;
+		regularConfig.OversampleH = 2;
+		regularConfig.OversampleV = 2;
+
 		if (std::filesystem::exists(notoPath))
-		{
-			m_Fonts.regular = io.Fonts->AddFontFromFileTTF(notoPath.string().c_str(), sizePx, &config);
-		}
+			m_Fonts.regular = io.Fonts->AddFontFromFileTTF(
+				notoPath.string().c_str(), sizePx, &regularConfig);
 		else
-		{
-			FUFU_WARN("Font not found: '{}'", notoPath.string());
 			m_Fonts.regular = io.Fonts->AddFontDefault();
+
+		// ---- Merge FA ----
+		if (std::filesystem::exists(faPath))
+		{
+			ImFontConfig mergeConfig;
+			mergeConfig.MergeMode = true;
+			mergeConfig.GlyphMinAdvanceX = sizeIconsPx;
+			mergeConfig.OversampleH = 1;
+			mergeConfig.OversampleV = 1;
+			io.Fonts->AddFontFromFileTTF(
+				faPath.string().c_str(), sizeIconsPx, &mergeConfig, k_FA_Ranges);
+		}
+
+		// ---- Merge Codicon ----
+		if (std::filesystem::exists(ciPath))
+		{
+			ImFontConfig mergeConfig;
+			mergeConfig.MergeMode = true;
+			mergeConfig.GlyphMinAdvanceX = sizeIconsPx;
+			mergeConfig.OversampleH = 1;
+			mergeConfig.OversampleV = 1;
+			io.Fonts->AddFontFromFileTTF(
+				ciPath.string().c_str(), sizeIconsPx, &mergeConfig, k_CI_Ranges);
 		}
 
 		// ---- NotoSans Bold ----
-		std::filesystem::path notoBoldPath = fontsDir / "NotoSans-Bold.ttf";
+		ImFontConfig boldConfig;
+		boldConfig.OversampleH = 2;
+		boldConfig.OversampleV = 2;
+
 		if (std::filesystem::exists(notoBoldPath))
-		{
-			m_Fonts.bold = io.Fonts->AddFontFromFileTTF(notoBoldPath.string().c_str(), sizePx, &config);
-		}
+			m_Fonts.bold = io.Fonts->AddFontFromFileTTF(notoBoldPath.string().c_str(), sizePx, &boldConfig);
 		else
-		{
 			m_Fonts.bold = m_Fonts.regular;
-		}
 
 		// ---- NotoSans Mono ----
-		std::filesystem::path notoMonoPath = fontsDir / "NotoSansMono-Regular.ttf";
+		ImFontConfig monoConfig;
+		monoConfig.OversampleH = 2;
+		monoConfig.OversampleV = 2;
+
 		if (std::filesystem::exists(notoMonoPath))
-		{
-			m_Fonts.monospace = io.Fonts->AddFontFromFileTTF(notoMonoPath.string().c_str(), sizePx - 1.f, &config);
-		}
+			m_Fonts.monospace = io.Fonts->AddFontFromFileTTF(notoMonoPath.string().c_str(), sizePx - 1.f, &monoConfig);
 		else
-		{
 			m_Fonts.monospace = m_Fonts.regular;
-		}
 
-		// ---- FontAwesome ----
-		std::filesystem::path faPath = fontsDir / "fa-solid-900.ttf";
+		// ---- FA standalone ----
 		if (std::filesystem::exists(faPath))
-		{
-			ImFontConfig faConfig;
-			faConfig.MergeMode = true;
-			faConfig.GlyphMinAdvanceX = sizeIconsPx;
-			faConfig.OversampleH = 1;
-			faConfig.OversampleV = 1;
-
-			// Font for icons
 			m_Fonts.icons = io.Fonts->AddFontFromFileTTF(faPath.string().c_str(), sizeIconsPx, nullptr, k_FA_Ranges);
-
-			io.Fonts->AddFontFromFileTTF(faPath.string().c_str(), sizeIconsPx, &faConfig, k_FA_Ranges);
-		}
 		else
-		{
-			FUFU_WARN("FontAwesome not found: '{}'", faPath.string());
 			m_Fonts.icons = m_Fonts.regular;
-		}
 
-		// ---- Codicon ----
-		std::filesystem::path ciPath = fontsDir / "codicon.ttf";
+		// ---- Codicon standalone ----
 		if (std::filesystem::exists(ciPath))
-		{
 			m_Fonts.codicons = io.Fonts->AddFontFromFileTTF(ciPath.string().c_str(), sizeIconsPx, nullptr, k_CI_Ranges);
-		}
 		else
-		{
-			FUFU_WARN("Codicon not found: '{}'", ciPath.string());
 			m_Fonts.codicons = m_Fonts.regular;
-		}
 
 		io.Fonts->Build();
-
-		// La Regular devient la police par défaut
 		io.FontDefault = m_Fonts.regular;
 
-		FUFU_INFO("Fonts loaded from '{}'", fontsDir.string());
+		FUFU_INFO("Fonts loaded - Regular: {} glyphs", m_Fonts.regular ? m_Fonts.regular->Glyphs.Size : 0);
 	}
 
 }

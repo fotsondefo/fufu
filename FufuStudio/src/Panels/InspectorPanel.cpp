@@ -3,13 +3,13 @@
 #include "Application/Application.h"
 #include <imgui.h>
 #include <glm/gtc/type_ptr.hpp>
+#include "Helpers/FontIcons.h"
 
 namespace FufuStudio 
 {
 
 	// Helper — dessine un label aligné à gauche + widget à droite
-	static void drawVec3Control(const char* label, glm::vec3& values,
-		float resetValue = 0.f, float speed = 0.01f)
+	static void drawVec3Control(const char* label, glm::vec3& values, float resetValue = 0.f, float speed = 0.01f)
 	{
 		ImGui::PushID(label);
 
@@ -34,7 +34,7 @@ namespace FufuStudio
 
 	void InspectorPanel::onImGuiRender(EditorState& state)
 	{
-		ImGui::Begin("Inspector");
+		ImGui::Begin(ICON_FA_SLIDERS " Inspector##inspector");
 
 		if (!state.selectedEntity || !state.selectedEntity.isValid())
 		{
@@ -117,12 +117,9 @@ namespace FufuStudio
 		drawVec3Control("Scale", t.scale, 1.f, 0.01f);
 
 		// Reset accumulation si la caméra principale a bougé
-		bool changed = t.position != posBefore
-			|| t.rotation != rotBefore
-			|| t.scale != scaBefore;
+		bool changed = t.position != posBefore || t.rotation != rotBefore || t.scale != scaBefore;
 
-		if (changed && entity.hasComponent<Fufu::CameraComponent>()
-			&& entity.getComponent<Fufu::CameraComponent>().primary)
+		if (changed && entity.hasComponent<Fufu::CameraComponent>() && entity.getComponent<Fufu::CameraComponent>().primary)
 			Fufu::Application::get().getRenderer().resetAccumulation();
 		else if (changed)
 			Fufu::Application::get().getRenderer().resetAccumulation();

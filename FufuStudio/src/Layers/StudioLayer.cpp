@@ -25,6 +25,7 @@ namespace FufuStudio
 		m_ImGuiContext.init(nativeWindow, configDir);
 
 		m_State.activeScene = std::make_shared<Fufu::Scene>("Default Scene");
+		m_State.imGuiContext = &m_ImGuiContext;
 
 		// Main Camera
 		auto cam = m_State.activeScene->createEntity("Editor Camera");

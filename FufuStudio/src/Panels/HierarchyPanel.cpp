@@ -1,12 +1,13 @@
 #include "Panels/HierarchyPanel.h"
 #include <Project/Components.h>
 #include <imgui.h>
+#include "Helpers/FontIcons.h"
 
 namespace FufuStudio 
 {
 	void HierarchyPanel::onImGuiRender(EditorState& state)
 	{
-		ImGui::Begin("Hierarchy");
+		ImGui::Begin(ICON_FA_BAR_CHART " Hierarchy##hierarchy");
 
 		if (!state.activeScene)
 		{
@@ -147,11 +148,12 @@ namespace FufuStudio
 	void HierarchyPanel::drawContextMenu(EditorState& state)
 	{
 		// Clic droit dans le vide de la fenêtre
-		if (ImGui::BeginPopupContextWindow("HierarchyContextMenu",
-			ImGuiPopupFlags_MouseButtonRight | ImGuiPopupFlags_NoOpenOverItems))
+		if (ImGui::BeginPopupContextWindow("HierarchyContextMenu", ImGuiPopupFlags_MouseButtonRight | ImGuiPopupFlags_NoOpenOverItems))
 		{
 			if (ImGui::MenuItem("Create Empty Entity"))
+			{
 				state.activeScene->createEntity("Empty Entity");
+			}
 			if (ImGui::MenuItem("Create Camera"))
 			{
 				auto cam = state.activeScene->createEntity("Camera");

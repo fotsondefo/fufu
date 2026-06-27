@@ -4,6 +4,7 @@
 #include <entt/entt.hpp>
 #include <Project/Entity.h>
 #include <Project/Scene.h>
+#include "Panels/ImGuiContext.h"
 
 namespace FufuStudio 
 {
@@ -27,6 +28,7 @@ namespace FufuStudio
 		glm::vec2 viewportSize = { 1280.f, 720.f };
 		bool      viewportFocused = false;
 		bool      viewportHovered = false;
+		ImGuiContext* imGuiContext = nullptr;
 	};
 
 }

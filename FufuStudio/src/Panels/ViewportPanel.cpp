@@ -1,4 +1,5 @@
 #include "Panels/ViewportPanel.h"
+#include "Helpers/FontIcons.h"
 #include <imgui.h>
 #include <GLFW/glfw3.h>
 #include <Application/Application.h>
@@ -18,8 +19,7 @@ namespace FufuStudio
 
 	void ViewportPanel::handleCameraInput(EditorState& state, float deltaTime)
 	{
-		GLFWwindow* window = static_cast<GLFWwindow*>(
-			Fufu::Application::get().getWindow().getNativeWindow());
+		GLFWwindow* window = static_cast<GLFWwindow*>(Fufu::Application::get().getWindow().getNativeWindow());
 
 		// --- Rotation souris (clic droit maintenu) ---
 		if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS)
@@ -97,7 +97,7 @@ namespace FufuStudio
 	void ViewportPanel::onImGuiRender(EditorState& state)
 	{
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.f, 0.f));
-		ImGui::Begin("Viewport");
+		ImGui::Begin(ICON_FA_EYE " Viewport##viewport");
 
 		state.viewportFocused = ImGui::IsWindowFocused();
 		state.viewportHovered = ImGui::IsWindowHovered();

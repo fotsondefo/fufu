@@ -1,4 +1,5 @@
 #include "Panels/RendererSettingsPanel.h"
+#include "Helpers/FontIcons.h"
 #include <imgui.h>
 
 namespace FufuStudio 
@@ -6,7 +7,7 @@ namespace FufuStudio
 
 	void RendererSettingsPanel::onImGuiRender(EditorState& /*state*/)
 	{
-		ImGui::Begin("Renderer Settings");
+		ImGui::Begin(ICON_FA_WRENCH " Renderer Settings##rendersettings");
 
 		auto& settings = m_Renderer.getSettings();
 		bool  changed = false;

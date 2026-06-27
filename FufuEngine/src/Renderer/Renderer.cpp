@@ -8,8 +8,8 @@ namespace Fufu
 {
 
 	// ----------------------------------------------------------------
-	// Compute shader — path tracing complet
-	// GI + shadows + reflections + réfraction
+	// Compute shader ï¿½ path tracing complet
+	// GI + shadows + reflections + rï¿½fraction
 	// ----------------------------------------------------------------
 
 	static const char* s_ComputeSrc = R"(
@@ -72,7 +72,7 @@ float rand(inout uint seed) {
     return float(pcg(seed)) / 4294967296.0;
 }
 
-// ---- Géométrie ----
+// ---- Gï¿½omï¿½trie ----
 struct Ray { vec3 origin; vec3 dir; };
 
 struct HitInfo {
@@ -161,7 +161,7 @@ vec3 tracePath(Ray ray, inout uint seed) {
         HitInfo hit = intersectScene(ray);
 
         if (!hit.hit) {
-            // Environnement simple — ciel gradient
+            // Environnement simple ï¿½ ciel gradient
             float t   = 0.5 * (ray.dir.y + 1.0);
             vec3  sky = mix(vec3(1.0), vec3(0.5, 0.7, 1.0), t);
             radiance += throughput * sky;
@@ -172,7 +172,7 @@ vec3 tracePath(Ray ray, inout uint seed) {
         vec3 albedo  = mat.albedo.rgb;
         vec3 N       = hit.normal;
 
-        // Émission
+        // ï¿½mission
         if (mat.emissive > 0.0) {
             radiance += throughput * albedo * mat.emissive;
             break;
@@ -182,13 +182,13 @@ vec3 tracePath(Ray ray, inout uint seed) {
         float f0       = mix(0.04, 1.0, mat.metallic);
         float F        = fresnel(cosTheta, f0);
 
-        // Choix stochastique : réflexion spéculaire / diffuse / réfraction
+        // Choix stochastique : rï¿½flexion spï¿½culaire / diffuse / rï¿½fraction
         float specProb = mix(F, 1.0, mat.metallic);
         float refrProb = (mat.albedo.a < 1.0) ? (1.0 - specProb) * (1.0 - mat.albedo.a) : 0.0;
         float r        = rand(seed);
 
         if (r < specProb) {
-            // Réflexion spéculaire (GGX simplifié via roughness)
+            // Rï¿½flexion spï¿½culaire (GGX simplifiï¿½ via roughness)
             vec3 roughDir = cosineHemisphere(N, seed);
             vec3 specDir  = reflect(ray.dir, N);
             ray.dir    = normalize(mix(specDir, roughDir, mat.roughness * mat.roughness));
@@ -196,7 +196,7 @@ vec3 tracePath(Ray ray, inout uint seed) {
             throughput *= albedo;
         }
         else if (r < specProb + refrProb) {
-            // Réfraction (verre)
+            // Rï¿½fraction (verre)
             bool tir;
             float eta = dot(ray.dir, N) < 0.0 ? (1.0 / mat.ior) : mat.ior;
             vec3  refractDir = refract(ray.dir, N, eta, tir);
@@ -264,7 +264,7 @@ void main() {
 )";
 
 	// ----------------------------------------------------------------
-	// Blit vertex + fragment (quad plein écran)
+	// Blit vertex + fragment (quad plein ï¿½cran)
 	// ----------------------------------------------------------------
 
 	static const char* s_BlitVertSrc = R"(
@@ -383,7 +383,7 @@ void main() {
 	}
 
 	// ----------------------------------------------------------------
-	// Upload scène
+	// Upload scï¿½ne
 	// ----------------------------------------------------------------
 
 	void Renderer::uploadSceneData(Scene& scene)
@@ -473,7 +473,7 @@ void main() {
 
 	void Renderer::renderScene(Scene& scene)
 	{
-		// Upload scène si changée
+		// Upload scï¿½ne si changï¿½e
 		if (sceneNeedsUpdate(scene))
 		{
 			uploadSceneData(scene);
@@ -481,7 +481,7 @@ void main() {
 				resetAccumulation();
 		}
 
-		// Caméra
+		// Camï¿½ra
 		Entity cam = scene.getPrimaryCamera();
 		if (!cam) return;
 
@@ -521,9 +521,9 @@ void main() {
 		glBufferData(GL_UNIFORM_BUFFER, sizeof(GPUFrameData), &frameData, GL_DYNAMIC_DRAW);
 
 		computePass();
-		blitPass();
+		//blitPass();
 
-		// Incrémenter uniquement en accumulation et si pas à la limite
+		// Incrï¿½menter uniquement en accumulation et si pas ï¿½ la limite
 		if (m_Settings.mode == RenderMode::Accumulation &&
 			m_FrameIndex < m_Settings.maxAccumFrames)
 			++m_FrameIndex;
@@ -543,12 +543,12 @@ void main() {
 		glBindBufferBase(GL_UNIFORM_BUFFER, 4, m_CameraUBO);
 		glBindBufferBase(GL_UNIFORM_BUFFER, 5, m_FrameDataUBO);
 
-		// Dispatch — groupes de 16x16
+		// Dispatch ï¿½ groupes de 16x16
 		int gx = (m_Width + 15) / 16;
 		int gy = (m_Height + 15) / 16;
 		glDispatchCompute(gx, gy, 1);
 
-		// Barrière avant lecture par le fragment shader
+		// Barriï¿½re avant lecture par le fragment shader
 		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
 	}
 
@@ -586,9 +586,9 @@ void main() {
 
 	bool Renderer::sceneNeedsUpdate(Scene& /*scene*/)
 	{
-		// Pour l'instant on upload à chaque frame.
-		// Tu peux ajouter un système de version sur Scene plus tard
-		// pour ne re-uploader que si des composants ont changé.
+		// Pour l'instant on upload ï¿½ chaque frame.
+		// Tu peux ajouter un systï¿½me de version sur Scene plus tard
+		// pour ne re-uploader que si des composants ont changï¿½.
 		return true;
 	}
 
