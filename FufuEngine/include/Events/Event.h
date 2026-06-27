@@ -31,7 +31,7 @@ namespace Fufu
 		EventCategoryMouseButton = 1 << 4
 	};
 
-	// Macros pour �viter le boilerplate dans chaque sous-classe
+	// Macros to avoid boilerplate code in each subclass
 #define FUFU_EVENT_TYPE(type) \
     static EventType getStaticType() { return EventType::type; } \
     virtual EventType getEventType() const override { return getStaticType(); } \

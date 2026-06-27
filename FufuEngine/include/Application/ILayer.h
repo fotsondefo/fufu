@@ -5,11 +5,11 @@
 
 namespace Fufu
 {
-	class Layer
+	class ILayer
 	{
 	public: 
-		explicit Layer(const std::string& name = "Layer") : m_Name(name) {}
-		virtual ~Layer() = default;
+		explicit ILayer(const std::string& name = "Layer") : m_Name(name) {}
+		virtual ~ILayer() = default;
 
 		virtual void onAttach() {}
 		virtual void onDetach() {}

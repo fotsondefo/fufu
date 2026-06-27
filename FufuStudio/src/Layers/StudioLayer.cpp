@@ -12,7 +12,7 @@ namespace FufuStudio
 {
 
 	StudioLayer::StudioLayer()
-		: Fufu::Layer("StudioLayer")
+		: Fufu::ILayer("StudioLayer")
 		, m_ViewportPanel(Fufu::Application::get().getRenderer())
 		, m_RendererSettingsPanel(Fufu::Application::get().getRenderer())
 	{}

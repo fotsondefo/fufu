@@ -34,7 +34,7 @@ namespace Fufu
 
 			if (!m_Minimized)
 			{
-				for (Layer* layer : m_LayerStack)
+				for (ILayer* layer : m_LayerStack)
 					layer->onUpdate(deltaTime);
 			}
 
@@ -42,10 +42,15 @@ namespace Fufu
 		}
 	}
 
-	void Application::close() { m_Running = false; }
+	void Application::close() 
+	{ 
+		m_Running = false; 
+	}
 
-	void Application::pushLayer(Layer* layer) { m_LayerStack.pushLayer(layer); }
-	void Application::pushOverlay(Layer* overlay) { m_LayerStack.pushOverlay(overlay); }
+	void Application::pushLayer(ILayer* layer) 
+	{ 
+		m_LayerStack.pushLayer(layer); 
+	}
 
 	void Application::onEvent(Event& e)
 	{

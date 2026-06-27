@@ -1,6 +1,6 @@
 #pragma once
 
-#include <Application/Layer.h>
+#include <Application/ILayer.h>
 #include "EditorState.h"
 #include "Panels/ViewportPanel.h"
 #include "Panels/RendererSettingsPanel.h"
@@ -10,7 +10,7 @@
 namespace FufuStudio 
 {
 
-	class StudioLayer : public Fufu::Layer
+	class StudioLayer : public Fufu::ILayer
 	{
 	public:
 		StudioLayer();

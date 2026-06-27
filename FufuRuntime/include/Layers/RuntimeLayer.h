@@ -1,17 +1,17 @@
 #pragma once
 
-#include "Application/Layer.h"
+#include "Application/ILayer.h"
 #include "Project/Scene.h"
 #include "RuntimeConfig.h"
 
 namespace FufuRuntime 
 {
 
-	class RuntimeLayer : public Fufu::Layer
+	class RuntimeLayer : public Fufu::ILayer
 	{
 	public:
 		explicit RuntimeLayer(const RuntimeConfig& config)
-			: Fufu::Layer("RuntimeLayer"), m_Config(config) {}
+			: Fufu::ILayer("RuntimeLayer"), m_Config(config) {}
 
 		void onAttach() override;
 		void onDetach() override;

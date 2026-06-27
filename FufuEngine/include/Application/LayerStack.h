@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Layer.h"
+#include "ILayer.h"
 #include <vector>
 
 namespace Fufu
@@ -11,18 +11,16 @@ namespace Fufu
 		LayerStack() = default;
 		~LayerStack();
 
-		void pushLayer(Layer* layer);
-		void pushOverlay(Layer* overlay);
-		void popLayer(Layer* layer);
-		void popOverlay(Layer* overlay);
+		void pushLayer(ILayer* layer);
+		void popLayer(ILayer* layer);
 
-		std::vector<Layer*>::iterator begin() { return m_Layers.begin(); }
-		std::vector<Layer*>::iterator end() { return m_Layers.end(); }
-		std::vector<Layer*>::const_iterator begin() const { return m_Layers.begin(); }
-		std::vector<Layer*>::const_iterator end() const { return m_Layers.end(); }
+		std::vector<ILayer*>::iterator begin() { return m_Layers.begin(); }
+		std::vector<ILayer*>::iterator end() { return m_Layers.end(); }
+		std::vector<ILayer*>::const_iterator begin() const { return m_Layers.begin(); }
+		std::vector<ILayer*>::const_iterator end() const { return m_Layers.end(); }
 
 	private:
-		std::vector<Layer*> m_Layers;
+		std::vector<ILayer*> m_Layers;
 		unsigned int m_LayerInsertIndex = 0;
 	};
 }
