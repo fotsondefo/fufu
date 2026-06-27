@@ -19,7 +19,10 @@ namespace FufuStudio
 
 	void StudioLayer::onAttach()
 	{
-		initImGui();
+		auto* nativeWindow = Fufu::Application::get().getWindow().getNativeWindow();
+		std::filesystem::path configDir = std::filesystem::current_path() / "config" / "editor";
+
+		m_ImGuiContext.init(nativeWindow, configDir);
 
 		m_State.activeScene = std::make_shared<Fufu::Scene>("Default Scene");
 
@@ -46,7 +49,7 @@ namespace FufuStudio
 
 	void StudioLayer::onDetach()
 	{
-		shutdownImGui();
+		m_ImGuiContext.shutdown();
 	}
 
 	void StudioLayer::onUpdate(float deltaTime)
@@ -58,7 +61,7 @@ namespace FufuStudio
 		if (m_State.activeScene)
 			Fufu::Application::get().getRenderer().renderScene(*m_State.activeScene);
 
-		beginImGuiFrame();
+		m_ImGuiContext.beginFrame();
 		buildDockspace();
 
 		m_ViewportPanel.onImGuiRender(m_State);
@@ -66,61 +69,13 @@ namespace FufuStudio
 		m_HierarchyPanel.onImGuiRender(m_State); 
 		m_InspectorPanel.onImGuiRender(m_State);   
 
-		endImGuiFrame();
+		m_ImGuiContext.endFrame();
 	}
 
 	void StudioLayer::onEvent(Fufu::Event& /*e*/)
 	{
 		// Les events souris/clavier sont lus directement via GLFW dans ViewportPanel
 		// quand le viewport est focused — pas besoin de dispatcher ici pour l'instant
-	}
-
-	// ----------------------------------------------------------------
-	// ImGui init / shutdown
-	// ----------------------------------------------------------------
-
-	void StudioLayer::initImGui()
-	{
-		IMGUI_CHECKVERSION();
-		ImGui::CreateContext();
-
-		ImGuiIO& io = ImGui::GetIO();
-		io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-		//io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
-
-		ImGui::StyleColorsDark();
-
-		// Arrondir légèrement les coins
-		ImGuiStyle& style = ImGui::GetStyle();
-		style.WindowRounding = 4.f;
-		style.FrameRounding = 3.f;
-		style.GrabRounding = 3.f;
-
-		GLFWwindow* window = static_cast<GLFWwindow*>(
-			Fufu::Application::get().getWindow().getNativeWindow());
-
-		ImGui_ImplGlfw_InitForOpenGL(window, true);
-		ImGui_ImplOpenGL3_Init("#version 430");
-	}
-
-	void StudioLayer::shutdownImGui()
-	{
-		ImGui_ImplOpenGL3_Shutdown();
-		ImGui_ImplGlfw_Shutdown();
-		ImGui::DestroyContext();
-	}
-
-	void StudioLayer::beginImGuiFrame()
-	{
-		ImGui_ImplOpenGL3_NewFrame();
-		ImGui_ImplGlfw_NewFrame();
-		ImGui::NewFrame();
-	}
-
-	void StudioLayer::endImGuiFrame()
-	{
-		ImGui::Render();
-		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 	}
 
 	void StudioLayer::buildDockspace()

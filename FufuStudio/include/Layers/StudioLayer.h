@@ -6,6 +6,7 @@
 #include "Panels/RendererSettingsPanel.h"
 #include "Panels/HierarchyPanel.h"
 #include "Panels/InspectorPanel.h"
+#include "Panels/ImGuiContext.h"
 
 namespace FufuStudio 
 {
@@ -21,14 +22,11 @@ namespace FufuStudio
 		void onEvent(Fufu::Event& e) override;
 
 	private:
-		void initImGui();
-		void shutdownImGui();
-		void beginImGuiFrame();
-		void endImGuiFrame();
 		void buildDockspace();
 		void handleKeyboardShortcuts();
 
 	private:
+		ImGuiContext m_ImGuiContext;
 		EditorState m_State;
 		ViewportPanel m_ViewportPanel;
 		RendererSettingsPanel m_RendererSettingsPanel;
