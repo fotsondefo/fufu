@@ -5,7 +5,14 @@
 class FufuRuntimeApp : public Fufu::Application
 {
 public:
-	explicit FufuRuntimeApp(const FufuRuntime::RuntimeConfig& config)
+	explicit FufuRuntimeApp(const FufuRuntime::RuntimeConfig& config) 
+		: Fufu::Application(
+			Fufu::WindowProps{
+				config.windowTitle,
+				static_cast<unsigned int>(config.width),
+				static_cast<unsigned int>(config.height)
+			}
+		)
 	{
 		pushLayer(new FufuRuntime::RuntimeLayer(config));
 	}

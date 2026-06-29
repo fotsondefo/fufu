@@ -7,6 +7,9 @@
 #include "Panels/HierarchyPanel.h"
 #include "Panels/InspectorPanel.h"
 #include "Panels/ImGuiContext.h"
+#include "Panels/ProjectPanel.h"
+#include "Screens/WelcomeScreen.h"
+#include "Helpers/TitleBar.h"
 
 namespace FufuStudio 
 {
@@ -32,6 +35,12 @@ namespace FufuStudio
 		RendererSettingsPanel m_RendererSettingsPanel;
 		HierarchyPanel  m_HierarchyPanel;
 		InspectorPanel  m_InspectorPanel;
+		ProjectPanel m_ProjectPanel;
+		
+		WelcomeScreen m_WelcomeScreen;
+		TitleBar m_TitleBar;
+
+		bool m_ProjectReady = false;
 	};
 
 } 

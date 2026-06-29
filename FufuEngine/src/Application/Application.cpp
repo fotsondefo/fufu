@@ -8,20 +8,24 @@ namespace Fufu
 
 	Application* Application::s_Instance = nullptr;
 
-	Application::Application()
+	Application::Application(const WindowProps& props)
 	{
 		FUFU_ASSERT(!s_Instance, "Application already exists!");
 		s_Instance = this;
 
-		m_Window = std::make_unique<Window>(WindowProps{ "Fufu Engine", 1920, 1080 });
+		m_Window = std::make_unique<Window>(props);
 		m_Window->setEventCallback([this](Event& e) { onEvent(e); });
 
-		m_Renderer.init(1280, 720);
+		m_Renderer.init(props.width, props.height);
+
+		std::filesystem::path appConfig = std::filesystem::current_path() / "config";
+		m_ProjectManager.init(appConfig);
 	}
 
 	Application::~Application()
 	{
 		m_Renderer.shutdown();
+		m_ProjectManager.shutdown();
 	}
 
 	void Application::run()
@@ -55,22 +59,23 @@ namespace Fufu
 	void Application::onEvent(Event& e)
 	{
 		EventDispatcher dispatcher(e);
-		dispatcher.dispatch<WindowCloseEvent>(
-			[this](WindowCloseEvent& ev) { return onWindowClose(ev); });
-		dispatcher.dispatch<WindowResizeEvent>(
-			[this](WindowResizeEvent& ev) { return onWindowResize(ev); });
+		dispatcher.dispatch<WindowCloseEvent>([this](WindowCloseEvent& ev) { return onWindowClose(ev); });
+		dispatcher.dispatch<WindowResizeEvent>([this](WindowResizeEvent& ev) { return onWindowResize(ev); });
 
 		for (auto it = m_LayerStack.end(); it != m_LayerStack.begin(); )
 		{
 			--it;
 			(*it)->onEvent(e);
-			if (e.handled) break;
+
+			if (e.handled) 
+				break;
 		}
 	}
 
 	bool Application::onWindowClose(WindowCloseEvent&)
 	{
 		close();
+
 		return true;
 	}
 
@@ -81,8 +86,10 @@ namespace Fufu
 			m_Minimized = true;
 			return false;
 		}
+		
 		m_Minimized = false;
 		m_Renderer.resize(e.getWidth(), e.getHeight());
+		
 		return false;
 	}
 

@@ -84,9 +84,9 @@ namespace FufuStudio
 
 	void ViewportPanel::syncCameraToScene(EditorState& state)
 	{
-		if (!state.activeScene) return;
+		if (!state.getActiveScene()) return;
 
-		Fufu::Entity cam = state.activeScene->getPrimaryCamera();
+		Fufu::Entity cam = state.getActiveScene()->getPrimaryCamera();
 		if (!cam) return;
 
 		auto& t = cam.getComponent<Fufu::TransformComponent>();

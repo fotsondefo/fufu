@@ -1,5 +1,4 @@
 #include "SceneIO.h"
-#include "Project/SceneSerializer.h"
 #include "Application/Application.h"
 #include <nfd.hpp>
 
@@ -14,24 +13,47 @@ namespace FufuStudio
 
 	bool SceneIO::newScene(EditorState& state)
 	{
-		state.activeScene = std::make_shared<Fufu::Scene>("Untitled");
-		state.currentPath = "";
+		auto& pm = Fufu::Application::get().getProjectManager();
+		if (!pm.hasProject())
+		{
+			FUFU_WARN("SceneIO: no project open");
+			return false;
+		}
+
+		auto& sm = pm.getCurrentProject().getSceneManager();
+		auto scene = sm.newScene("Untitled");
+		sm.setActiveScene("Untitled");
+
 		state.selectedEntity = Fufu::Entity{};
 		Fufu::Application::get().getRenderer().resetAccumulation();
-		FUFU_INFO("New scene created");
+
 		return true;
 	}
 
 	bool SceneIO::saveScene(EditorState& state)
 	{
-		if (state.currentPath.empty())
-			return saveSceneAs(state);
+		auto& pm = Fufu::Application::get().getProjectManager();
+		if (!pm.hasProject()) return false;
 
-		return saveToPath(state, state.currentPath);
+		auto scene = state.getActiveScene();
+		if (!scene) return false;
+
+		auto& proj = pm.getCurrentProject();
+		std::filesystem::path path = proj.getInfo().scenesDir() / (scene->getName() + ".fufuscene");
+
+		return pm.getCurrentProject().getSceneManager().saveScene(scene, path);
 	}
 
 	bool SceneIO::saveSceneAs(EditorState& state)
 	{
+		auto& pm = Fufu::Application::get().getProjectManager();
+		if (!pm.hasProject()) 
+			return false;
+
+		auto scene = state.getActiveScene();
+		if (!scene) 
+			return false;
+
 		NFD::Guard nfdGuard;
 		NFD::UniquePath outPath;
 
@@ -39,27 +61,16 @@ namespace FufuStudio
 			outPath,
 			k_Filters,
 			static_cast<nfdfiltersize_t>(k_FilterCount),
-			nullptr,                // default repository
-			"scene.fufuscene"       // Default name
+			pm.getCurrentProject().getInfo().scenesDir().string().c_str(),
+			(scene->getName() + ".fufuscene").c_str()
 		);
 
 		if (result == NFD_OKAY)
 		{
 			std::filesystem::path path(outPath.get());
-
-			// Add the extension if it's not present in the filepath
-			if (path.extension().empty())
-				path += ".fufuscene";
-
-			return saveToPath(state, path);
-		}
-		else if (result == NFD_CANCEL)
-		{
-			FUFU_INFO("Save cancelled by user");
-		}
-		else
-		{
-			FUFU_ERROR("NFD Save error: {}", NFD::GetError());
+			if (path.extension().empty()) path += ".fufuscene";
+			
+			return pm.getCurrentProject().getSceneManager().saveScene(scene, path);
 		}
 
 		return false;
@@ -67,65 +78,33 @@ namespace FufuStudio
 
 	bool SceneIO::openScene(EditorState& state)
 	{
+		auto& pm = Fufu::Application::get().getProjectManager();
+		if (!pm.hasProject()) return false;
+
 		NFD::Guard nfdGuard;
 		NFD::UniquePath inPath;
 
 		nfdresult_t result = NFD::OpenDialog(
 			inPath,
 			k_Filters,
-			k_FilterCount,
-			nullptr
+			static_cast<nfdfiltersize_t>(k_FilterCount),
+			pm.getCurrentProject().getInfo().scenesDir().string().c_str()
 		);
 
 		if (result == NFD_OKAY)
 		{
 			std::filesystem::path path(inPath.get());
+			auto& sm = pm.getCurrentProject().getSceneManager();
+			auto  scene = sm.loadScene(path);
+			if (!scene) return false;
 
-			auto newScene = std::make_shared<Fufu::Scene>();
-			Fufu::SceneSerializer serializer(newScene.get());
-
-			if (!serializer.deserialize(path))
-			{
-				FUFU_ERROR("Failed to load scene: {}", path.string());
-				return false;
-			}
-
-			state.activeScene = newScene;
-			state.currentPath = path.string();
+			sm.setActiveScene(scene->getName());
 			state.selectedEntity = Fufu::Entity{};
 			Fufu::Application::get().getRenderer().resetAccumulation();
-			FUFU_INFO("Scene loaded: {}", path.string());
 			return true;
-		}
-		else if (result == NFD_CANCEL)
-		{
-			FUFU_INFO("Open cancelled by user");
-		}
-		else
-		{
-			FUFU_ERROR("NFD Open error: {}", NFD::GetError());
 		}
 
 		return false;
-	}
-
-	bool SceneIO::saveToPath(EditorState& state, const std::filesystem::path& path)
-	{
-		if (!state.activeScene)
-		{
-			FUFU_ERROR("No active scene to save");
-			return false;
-		}
-
-		// Create parent folder if necessary
-		std::filesystem::create_directories(path.parent_path());
-
-		Fufu::SceneSerializer serializer(state.activeScene.get());
-		serializer.serialize(path);
-
-		state.currentPath = path.string();
-		FUFU_INFO("Scene saved: {}", path.string());
-		return true;
 	}
 
 }

@@ -2,7 +2,7 @@
 
 #include "RenderSettings.h"
 #include "GPUBuffers.h"
-#include "Project/Scene.h"
+#include "Project/Scene/Scene.h"
 
 namespace Fufu 
 {
@@ -16,18 +16,18 @@ namespace Fufu
 		void init(int width, int height);
 		void shutdown();
 
-		// Appelé chaque frame depuis Application::run()
+		// Appelï¿½ chaque frame depuis Application::run()
 		void renderScene(Scene& scene);
 
 		// Redimensionnement viewport
 		void resize(int width, int height);
 
-		// Récupère la texture finale (pour affichage ImGui ou blit)
+		// Rï¿½cupï¿½re la texture finale (pour affichage ImGui ou blit)
 		uint32_t getOutputTextureID() const { return m_OutputTexture; }
 
 		RenderSettings& getSettings() { return m_Settings; }
 
-		// Remet l'accumulation à zéro (ex: caméra bougée)
+		// Remet l'accumulation ï¿½ zï¿½ro (ex: camï¿½ra bougï¿½e)
 		void resetAccumulation();
 
 		int getAccumulatedFrames() const { return m_FrameIndex; }
@@ -58,7 +58,7 @@ namespace Fufu
 		int m_Height = 0;
 
 		// Textures
-		uint32_t m_OutputTexture = 0; // Résultat final (RGBA32F)
+		uint32_t m_OutputTexture = 0; // Rï¿½sultat final (RGBA32F)
 		uint32_t m_AccumTexture = 0; // Accumulation (RGBA32F)
 
 		// Programs OpenGL
@@ -78,10 +78,10 @@ namespace Fufu
 		// Accumulation
 		int      m_FrameIndex = 0;
 
-		// Version tracking pour éviter les uploads inutiles
+		// Version tracking pour ï¿½viter les uploads inutiles
 		uint32_t m_LastSceneVersion = 0;
 
-		// Cache des données GPU
+		// Cache des donnï¿½es GPU
 		std::vector<GPUTriangle> m_Triangles;
 		std::vector<GPUMaterial> m_Materials;
 	};

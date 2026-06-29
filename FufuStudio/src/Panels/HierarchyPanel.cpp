@@ -9,35 +9,34 @@ namespace FufuStudio
 	{
 		ImGui::Begin(ICON_FA_BAR_CHART " Hierarchy##hierarchy");
 
-		if (!state.activeScene)
+		std::shared_ptr<Fufu::Scene> activeScene = state.getActiveScene();
+
+		if (!activeScene)
 		{
 			ImGui::TextDisabled("No active scene");
 			ImGui::End();
 			return;
 		}
 
-		// Bouton création d'entité
+		// Create Entity button
 		if (ImGui::Button("+ Entity"))
-			state.activeScene->createEntity("New Entity");
+			activeScene->createEntity("New Entity");
 
 		ImGui::Separator();
 
-		// N'afficher que les entités racines (sans parent)
-		auto& reg = state.activeScene->getRegistry();
+		// Display entities
+		auto& reg = activeScene->getRegistry();
 		reg.each([&](entt::entity handle)
 		{
-			// Ignorer les entités qui ont un parent — elles seront
-			// dessinées récursivement depuis leur racine
 			if (reg.all_of<Fufu::ParentComponent>(handle))
 				return;
 
-			Fufu::Entity entity(handle, state.activeScene.get());
+			Fufu::Entity entity(handle, activeScene.get());
 			drawEntityNode(entity, state);
 		});
 
-		// Clic dans le vide ? désélectionner
-		if (ImGui::IsWindowHovered() && ImGui::IsMouseClicked(0)
-			&& !ImGui::IsAnyItemHovered())
+		// Deselect if we clic on an empty area
+		if (ImGui::IsWindowHovered() && ImGui::IsMouseClicked(0) && !ImGui::IsAnyItemHovered())
 			state.selectedEntity = Fufu::Entity{};
 
 		drawContextMenu(state);
@@ -57,41 +56,44 @@ namespace FufuStudio
 		if (state.selectedEntity == entity)
 			flags |= ImGuiTreeNodeFlags_Selected;
 
-		// Feuille si pas d'enfants
-		bool hasChildren = entity.hasComponent<Fufu::ChildrenComponent>()
-			&& !entity.getComponent<Fufu::ChildrenComponent>().children.empty();
+		bool hasChildren = entity.hasComponent<Fufu::ChildrenComponent>() && !entity.getComponent<Fufu::ChildrenComponent>().children.empty();
 
 		if (!hasChildren)
 			flags |= ImGuiTreeNodeFlags_Leaf;
 
 		bool opened = ImGui::TreeNodeEx(
-			reinterpret_cast<void*>(static_cast<uintptr_t>(
-				static_cast<uint32_t>(entity.getHandle()))),
-			flags,
-			"%s", tag.c_str()
+			reinterpret_cast<void*>(
+				static_cast<uintptr_t>(
+					static_cast<uint32_t>(entity.getHandle())
+					)
+				)
+			, flags, "%s", tag.c_str()
 		);
 
-		// Sélection au clic
 		if (ImGui::IsItemClicked())
 			state.selectedEntity = entity;
 
-		// Menu contextuel clic droit sur une entité
+		std::shared_ptr<Fufu::Scene> activeScene = state.getActiveScene();
+
+		// Contextual menu 
 		bool deleted = false;
 		if (ImGui::BeginPopupContextItem())
 		{
 			if (ImGui::MenuItem("Create Child"))
 			{
-				auto child = state.activeScene->createEntity("Child Entity");
-				state.activeScene->setParent(child, entity);
+				auto child = activeScene->createEntity("Child Entity");
+				activeScene->setParent(child, entity);
 			}
 			if (ImGui::MenuItem("Duplicate"))
 			{
-				// Duplication simple — copie Tag et Transform
-				auto dup = state.activeScene->createEntity(tag + " (copy)");
+				// Duplicate : copy Tag and Transform
+				auto dup = activeScene->createEntity(tag + " (copy)");
 				auto& srcT = entity.getComponent<Fufu::TransformComponent>();
 				auto& dstT = dup.getComponent<Fufu::TransformComponent>();
+
 				dstT = srcT;
 			}
+			
 			ImGui::Separator();
 			if (ImGui::MenuItem("Delete"))
 				deleted = true;
@@ -99,7 +101,7 @@ namespace FufuStudio
 			ImGui::EndPopup();
 		}
 
-		// Drag & drop pour reparenter
+		// Drag & drop to parent
 		if (ImGui::BeginDragDropSource())
 		{
 			uint32_t handle = static_cast<uint32_t>(entity.getHandle());
@@ -114,9 +116,8 @@ namespace FufuStudio
 				ImGui::AcceptDragDropPayload("ENTITY_ID"))
 			{
 				uint32_t srcHandle = *static_cast<const uint32_t*>(payload->Data);
-				Fufu::Entity src(static_cast<entt::entity>(srcHandle),
-					state.activeScene.get());
-				state.activeScene->setParent(src, entity);
+				Fufu::Entity src(static_cast<entt::entity>(srcHandle), activeScene.get());
+				activeScene->setParent(src, entity);
 			}
 			ImGui::EndDragDropTarget();
 		}
@@ -125,41 +126,46 @@ namespace FufuStudio
 		{
 			if (hasChildren)
 			{
-				for (entt::entity childHandle :
-				entity.getComponent<Fufu::ChildrenComponent>().children)
+				for (entt::entity childHandle : entity.getComponent<Fufu::ChildrenComponent>().children)
 				{
-					Fufu::Entity child(childHandle, state.activeScene.get());
+					Fufu::Entity child(childHandle, activeScene.get());
+
 					if (child.isValid())
 						drawEntityNode(child, state);
 				}
 			}
+
 			ImGui::TreePop();
 		}
 
-		// Suppression après le rendu pour éviter l'invalidation du registre
+		// Delete after rendering to prevent the registry from being invalidated
 		if (deleted)
 		{
 			if (state.selectedEntity == entity)
 				state.selectedEntity = Fufu::Entity{};
-			state.activeScene->destroyEntity(entity);
+			
+			activeScene->destroyEntity(entity);
 		}
 	}
 
 	void HierarchyPanel::drawContextMenu(EditorState& state)
 	{
-		// Clic droit dans le vide de la fenêtre
+		std::shared_ptr<Fufu::Scene> activeScene = state.getActiveScene();
+
 		if (ImGui::BeginPopupContextWindow("HierarchyContextMenu", ImGuiPopupFlags_MouseButtonRight | ImGuiPopupFlags_NoOpenOverItems))
 		{
 			if (ImGui::MenuItem("Create Empty Entity"))
 			{
-				state.activeScene->createEntity("Empty Entity");
+				activeScene->createEntity("Empty Entity");
 			}
+			
 			if (ImGui::MenuItem("Create Camera"))
 			{
-				auto cam = state.activeScene->createEntity("Camera");
+				auto cam = activeScene->createEntity("Camera");
 				auto& c = cam.addComponent<Fufu::CameraComponent>();
 				c.primary = false;
 			}
+
 			ImGui::EndPopup();
 		}
 	}

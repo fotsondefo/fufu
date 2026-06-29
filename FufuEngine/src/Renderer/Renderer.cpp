@@ -1,8 +1,9 @@
 #include "depch.h"
-#include "Project/Scene.h"
+#include "Project/Scene/Scene.h"
 #include "Renderer/Renderer.h"
 #include "Project/Components.h"
 #include "Project/Assets/AssetManager.h"
+#include "Application/Application.h"
 
 namespace Fufu 
 {
@@ -412,7 +413,8 @@ void main() {
 			m_Materials.push_back(gpuMat);
 
 			// Mesh
-			auto meshAsset = AssetManager::get().getMesh(meshComp.meshPath);
+			auto& am = Fufu::Application::get().getProjectManager().getCurrentProject().getAssetManager();
+			auto meshAsset = am.getMesh(meshComp.meshPath);
 			if (!meshAsset) return;
 
 			glm::mat4 model = transform.getTransform();

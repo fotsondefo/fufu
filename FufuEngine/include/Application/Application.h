@@ -5,6 +5,7 @@
 #include "Window.h"
 #include "Events/ApplicationEvents.h"
 #include "Renderer/Renderer.h"
+#include "Project/ProjectManager.h"
 
 namespace Fufu 
 {
@@ -12,7 +13,7 @@ namespace Fufu
 	class Application
 	{
 	public:
-		Application();
+		explicit Application(const WindowProps& props = WindowProps{ "Fufu Engine", 1280, 720 });
 		virtual ~Application();
 
 		void run();
@@ -23,6 +24,7 @@ namespace Fufu
 		static Application& get() { return *s_Instance; }
 		Window& getWindow() { return *m_Window; }
 		Renderer& getRenderer() { return m_Renderer; }
+		ProjectManager& getProjectManager() { return m_ProjectManager; }
 
 	private:
 		void onEvent(Event& e);
@@ -33,6 +35,8 @@ namespace Fufu
 		std::unique_ptr<Window> m_Window;
 		LayerStack m_LayerStack;
 		Renderer m_Renderer;
+		ProjectManager m_ProjectManager;
+
 		bool m_Running = true;
 		bool m_Minimized = false;
 		float m_LastFrameTime = 0.0f;

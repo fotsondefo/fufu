@@ -13,9 +13,6 @@ namespace FufuStudio
 		static bool saveSceneAs(EditorState& state);
 		static bool openScene(EditorState& state);
 		static bool newScene(EditorState& state);
-
-	private:
-		static bool saveToPath(EditorState& state, const std::filesystem::path& path);
 	};
 
 }
