@@ -22,8 +22,8 @@ include(FetchContent)
 # GLFW
 FetchContent_Declare(
     glfw
-    GIT_REPOSITORY https://github.com/glfw/glfw.git
-    GIT_TAG        3.4
+    GIT_REPOSITORY https://github.com/TheCherno/glfw.git
+    GIT_TAG        master
 )
 set(GLFW_BUILD_DOCS     OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_TESTS    OFF CACHE BOOL "" FORCE)

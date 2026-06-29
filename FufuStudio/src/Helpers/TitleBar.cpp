@@ -37,16 +37,27 @@ namespace FufuStudio
 	{
 		GLFWwindow* window = static_cast<GLFWwindow*>(Fufu::Application::get().getWindow().getNativeWindow());
 
-		HWND hwnd = glfwGetWin32Window(window);
+		glfwSetTitlebarHitTestCallback(window,
+			[](GLFWwindow* w, int x, int y, int* hit)
+			{
+				TitleBar* titleBar = static_cast<TitleBar*>(glfwGetWindowUserPointer(w));
 
-		LONG style = GetWindowLong(hwnd, GWL_STYLE);
-		style &= ~WS_CAPTION;
-		style |= WS_THICKFRAME;
-		SetWindowLong(hwnd, GWL_STYLE, style);
-		SetWindowPos(hwnd, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+				*hit = 1; // draggable
+				if (!titleBar) return;
 
-		SetWindowLongPtr(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(window));
-		s_OriginalWndProc = reinterpret_cast<WNDPROC>(SetWindowLongPtr(hwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(TitleBarWndProc)));
+				
+				for (const auto& rect : titleBar->m_NonDraggableRects)
+				{
+					if (x >= rect.x && x <= rect.x + rect.w && y >= rect.y && y <= rect.y + rect.h)
+					{
+						*hit = 0;
+						return;
+					}
+				}
+			}
+		);
+
+		//	glfwSetWindowUserPointer(window, this);
 
 		// Logo
 		if (std::filesystem::exists(logoPath))
@@ -92,6 +103,8 @@ namespace FufuStudio
 
 	void TitleBar::onImGuiRender(EditorState& state)
 	{
+		m_NonDraggableRects.clear();
+
 		ImGuiViewport* vp = ImGui::GetMainViewport();
 
 		ImGui::SetNextWindowPos(vp->Pos);
@@ -133,7 +146,9 @@ namespace FufuStudio
 		// --- System button (Right) ---
 		drawWindowControls();
 
-		handleWindowDrag();
+		float windowW = ImGui::GetWindowWidth();
+		registerNonDraggable(windowW - 46.f * 3.f, 0.f, 46.f * 3.f, k_Height);
+		registerNonDraggable(40.f, 0.f, 200.f, k_Height);
 
 		ImGui::End();
 	}
@@ -375,63 +390,9 @@ namespace FufuStudio
 		ImGui::PopStyleVar(3);
 	}
 
-	void TitleBar::handleWindowDrag()
+	void TitleBar::registerNonDraggable(float x, float y, float w, float h)
 	{
-		GLFWwindow* window = static_cast<GLFWwindow*>(Fufu::Application::get().getWindow().getNativeWindow());
-
-		ImVec2 barMin = ImGui::GetWindowPos();
-		ImVec2 barMax = ImVec2(
-			barMin.x + ImGui::GetWindowWidth() - 46.f * 3.f,
-			barMin.y + k_Height
-		);
-
-		ImVec2 mousePos = ImGui::GetMousePos();
-		bool mouseOverBar = mousePos.x >= barMin.x && mousePos.x <= barMax.x && mousePos.y >= barMin.y && mousePos.y <= barMax.y;
-
-		if (mouseOverBar && ImGui::IsMouseDoubleClicked(0))
-		{
-			if (glfwGetWindowAttrib(window, GLFW_MAXIMIZED))
-				glfwRestoreWindow(window);
-			else
-				glfwMaximizeWindow(window);
-
-			return;
-		}
-
-		if (mouseOverBar && ImGui::IsMouseClicked(0) && !ImGui::IsAnyItemHovered())
-		{
-			m_Dragging = true;
-
-			POINT pt;
-			GetCursorPos(&pt);
-			m_DragStartPos = glm::vec2(static_cast<float>(pt.x), static_cast<float>(pt.y));
-
-			int wx, wy;
-			glfwGetWindowPos(window, &wx, &wy);
-			m_WindowStartPos = glm::vec2(static_cast<float>(wx), static_cast<float>(wy));
-		}
-
-		if (m_Dragging)
-		{
-			if (ImGui::IsMouseReleased(0))
-			{
-				m_Dragging = false;
-			}
-			else
-			{
-				POINT pt;
-				GetCursorPos(&pt);
-
-				float dx = static_cast<float>(pt.x) - m_DragStartPos.x;
-				float dy = static_cast<float>(pt.y) - m_DragStartPos.y;
-
-				glfwSetWindowPos(
-					window,
-					static_cast<int>(m_WindowStartPos.x + dx),
-					static_cast<int>(m_WindowStartPos.y + dy)
-				);
-			}
-		}
+		m_NonDraggableRects.push_back({ x, y, w, h });
 	}
 
 }
