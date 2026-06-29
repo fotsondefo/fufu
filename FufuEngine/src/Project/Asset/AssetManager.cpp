@@ -15,9 +15,58 @@ using json = nlohmann::json;
 namespace Fufu 
 {
 
-	// ----------------------------------------------------------------
-	// Helpers .meta
-	// ----------------------------------------------------------------
+	AssetManager::AssetManager(const std::filesystem::path& rootDir)
+		: m_RootDir(rootDir)
+	{
+		FUFU_INFO("AssetManager created — root: '{}'", rootDir.string());
+	}
+
+	void AssetManager::scanDirectory()
+	{
+		if (!std::filesystem::exists(m_RootDir))
+		{
+			FUFU_WARN("AssetManager: root directory does not exist: '{}'",
+				m_RootDir.string());
+			return;
+		}
+
+		size_t count = 0;
+		for (const auto& entry :
+			std::filesystem::recursive_directory_iterator(m_RootDir))
+		{
+			if (!entry.is_regular_file()) continue;
+
+			const auto& path = entry.path();
+
+			// Ignore the meta files
+			if (path.extension() == ".meta") continue;
+
+			AssetType type = inferTypeFromExtension(path);
+			if (type == AssetType::None) continue;
+
+			registerAsset(path, type);
+			++count;
+		}
+
+		FUFU_INFO("AssetManager: scanned {} assets in '{}'", count, m_RootDir.string());
+	}
+
+	AssetType AssetManager::inferTypeFromExtension(const std::filesystem::path& path) const
+	{
+		std::string ext = path.extension().string();
+		std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+
+		if (ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".tga" || ext == ".bmp" || ext == ".hdr")
+			return AssetType::Texture;
+
+		if (ext == ".obj" || ext == ".fbx" || ext == ".gltf" || ext == ".glb" || ext == ".dae")
+			return AssetType::Mesh;
+
+		if (ext == ".vert" || ext == ".frag" || ext == ".comp" || ext == ".glsl")
+			return AssetType::Shader;
+
+		return AssetType::None;
+	}
 
 	std::filesystem::path AssetManager::metaPath(const std::filesystem::path& sourcePath) const
 	{
@@ -43,32 +92,31 @@ namespace Fufu
 			return std::nullopt;
 
 		json j;
-		try { j = json::parse(file); }
-		catch (...) { return std::nullopt; }
+		try { 
+			j = json::parse(file); 
+		}
+		catch (...) { 
+			return std::nullopt; 
+		}
 
 		AssetMeta meta;
 		meta.uuid = UUID(j.at("uuid").get<uint64_t>());
 		meta.sourcePath = j.at("path").get<std::string>();
 		meta.type = static_cast<AssetType>(j.at("type").get<int>());
 		meta.state = AssetState::Unloaded;
+		
 		return meta;
 	}
 
-	// ----------------------------------------------------------------
-	// Enregistrement
-	// ----------------------------------------------------------------
-
 	UUID AssetManager::registerAsset(const std::filesystem::path& path, AssetType type)
 	{
-		// Normaliser le chemin
 		std::string canonical = std::filesystem::weakly_canonical(path).string();
 
-		// Si déjà enregistré, retourner l'UUID existant
 		auto it = m_PathIndex.find(canonical);
 		if (it != m_PathIndex.end())
 			return it->second;
 
-		// Lire le .meta existant ou en créer un nouveau
+		// if the meta file exist we read it. Otherwise we create one.
 		AssetMeta meta;
 		auto existing = readMeta(path);
 		if (existing.has_value())
@@ -84,7 +132,7 @@ namespace Fufu
 			writeMeta(meta);
 		}
 
-		// Créer le bon type d'asset
+		// Asset creation
 		std::shared_ptr<Asset> asset;
 		switch (type)
 		{
@@ -101,12 +149,9 @@ namespace Fufu
 		m_PathIndex[canonical] = meta.uuid;
 
 		FUFU_TRACE("Asset registered: '{}' ? UUID {}", canonical, meta.uuid.value());
+
 		return meta.uuid;
 	}
-
-	// ----------------------------------------------------------------
-	// Chargement différé
-	// ----------------------------------------------------------------
 
 	void AssetManager::loadAsset(std::shared_ptr<Asset>& asset)
 	{
@@ -190,23 +235,16 @@ namespace Fufu
 			for (unsigned int v = 0; v < aiMesh->mNumVertices; ++v)
 			{
 				Vertex vertex;
-				vertex.position = { aiMesh->mVertices[v].x,
-									aiMesh->mVertices[v].y,
-									aiMesh->mVertices[v].z };
-				vertex.normal = { aiMesh->mNormals[v].x,
-									aiMesh->mNormals[v].y,
-									aiMesh->mNormals[v].z };
-				vertex.uv = aiMesh->mTextureCoords[0]
-					? glm::vec2(aiMesh->mTextureCoords[0][v].x, aiMesh->mTextureCoords[0][v].y)
-					: glm::vec2(0.f);
-				vertex.tangent = aiMesh->mTangents
-					? glm::vec3(aiMesh->mTangents[v].x, aiMesh->mTangents[v].y, aiMesh->mTangents[v].z)
-					: glm::vec3(0.f);
+				vertex.position = { aiMesh->mVertices[v].x, aiMesh->mVertices[v].y, aiMesh->mVertices[v].z };
+				vertex.normal = { aiMesh->mNormals[v].x, aiMesh->mNormals[v].y, aiMesh->mNormals[v].z };
+				vertex.uv = aiMesh->mTextureCoords[0] ? glm::vec2(aiMesh->mTextureCoords[0][v].x, aiMesh->mTextureCoords[0][v].y) : glm::vec2(0.f);
+				vertex.tangent = aiMesh->mTangents ? glm::vec3(aiMesh->mTangents[v].x, aiMesh->mTangents[v].y, aiMesh->mTangents[v].z) : glm::vec3(0.f);
 
 				sub.vertices.push_back(vertex);
 			}
 
 			sub.indices.reserve(aiMesh->mNumFaces * 3);
+
 			for (unsigned int f = 0; f < aiMesh->mNumFaces; ++f)
 				for (unsigned int i = 0; i < aiMesh->mFaces[f].mNumIndices; ++i)
 					sub.indices.push_back(aiMesh->mFaces[f].mIndices[i]);
@@ -220,8 +258,8 @@ namespace Fufu
 
 	void AssetManager::loadShader(std::shared_ptr<ShaderAsset>& asset)
 	{
-		// sourcePath contient le chemin du vertex shader
-		// Le fragment est déduit via le .meta (champs supplémentaires)
+		// sourcePath contains the path to the vertex shader
+		// The fragment shader is inferred from the .meta file 
 		auto readFile = [](const std::filesystem::path& p) -> std::string
 		{
 			std::ifstream file(p);
@@ -230,7 +268,7 @@ namespace Fufu
 			return { std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>() };
 		};
 
-		// Lire le .meta pour récupérer les chemins fragment et compute
+		// Read the .meta to get the fragment and compute path
 		auto metaOpt = readMeta(asset->m_Meta.sourcePath);
 		if (!metaOpt.has_value())
 		{
@@ -239,7 +277,6 @@ namespace Fufu
 			return;
 		}
 
-		// Lire le fichier .meta étendu (champs fragPath / computePath)
 		json j;
 		{
 			std::ifstream f(metaPath(asset->m_Meta.sourcePath));
@@ -247,10 +284,8 @@ namespace Fufu
 		}
 
 		asset->m_Sources.vertex = readFile(asset->m_Meta.sourcePath);
-		asset->m_Sources.fragment = j.contains("fragPath")
-			? readFile(j["fragPath"].get<std::string>()) : "";
-		asset->m_Sources.compute = j.contains("computePath")
-			? readFile(j["computePath"].get<std::string>()) : "";
+		asset->m_Sources.fragment = j.contains("fragPath") ? readFile(j["fragPath"].get<std::string>()) : "";
+		asset->m_Sources.compute = j.contains("computePath") ? readFile(j["computePath"].get<std::string>()) : "";
 
 		if (asset->m_Sources.vertex.empty())
 		{
@@ -262,10 +297,6 @@ namespace Fufu
 		asset->m_Meta.state = AssetState::Loaded;
 		FUFU_INFO("Shader loaded: '{}'", asset->m_Meta.sourcePath.string());
 	}
-
-	// ----------------------------------------------------------------
-	// Raccourcis directs par chemin
-	// ----------------------------------------------------------------
 
 	std::shared_ptr<TextureAsset> AssetManager::getTexture(const std::filesystem::path& path)
 	{
@@ -279,14 +310,11 @@ namespace Fufu
 		return getAsset<MeshAsset>(uuid);
 	}
 
-	std::shared_ptr<ShaderAsset> AssetManager::getShader(
-		const std::filesystem::path& vertPath,
-		const std::filesystem::path& fragPath,
-		const std::filesystem::path& computePath)
+	std::shared_ptr<ShaderAsset> AssetManager::getShader(const std::filesystem::path& vertPath, const std::filesystem::path& fragPath, const std::filesystem::path& computePath)
 	{
 		UUID uuid = registerAsset(vertPath, AssetType::Shader);
 
-		// Écrire les chemins fragment/compute dans le .meta
+		// Wirte fragment/compute in the .meta
 		auto metaOpt = readMeta(vertPath);
 		if (metaOpt.has_value())
 		{
@@ -295,16 +323,13 @@ namespace Fufu
 			j = json::parse(f);
 			if (!fragPath.empty())    j["fragPath"] = fragPath.string();
 			if (!computePath.empty()) j["computePath"] = computePath.string();
+
 			std::ofstream out(metaPath(vertPath));
 			out << j.dump(4);
 		}
 
 		return getAsset<ShaderAsset>(uuid);
 	}
-
-	// ----------------------------------------------------------------
-	// Déchargement
-	// ----------------------------------------------------------------
 
 	void AssetManager::unload(UUID uuid)
 	{
@@ -313,7 +338,7 @@ namespace Fufu
 
 		it->second->m_Meta.state = AssetState::Unloaded;
 
-		// Libérer les données spécifiques
+		// Specific data...
 		if (it->second->getType() == AssetType::Texture)
 		{
 			auto tex = std::dynamic_pointer_cast<TextureAsset>(it->second);

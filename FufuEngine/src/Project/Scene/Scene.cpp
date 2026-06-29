@@ -1,6 +1,6 @@
 #include "depch.h"
 
-#include "Project/Scene.h"
+#include "Project/Scene/Scene.h"
 #include "Project/Components.h"
 
 namespace Fufu 
@@ -15,12 +15,12 @@ namespace Fufu
 
 	void Scene::destroyEntity(Entity entity)
 	{
-		// Détacher des parents/enfants avant destruction
+		// Dï¿½tacher des parents/enfants avant destruction
 		removeParent(entity);
 
 		if (entity.hasComponent<ChildrenComponent>())
 		{
-			// Détacher tous les enfants
+			// Dï¿½tacher tous les enfants
 			auto& children = entity.getComponent<ChildrenComponent>().children;
 			for (entt::entity child : children)
 			{
@@ -69,7 +69,7 @@ namespace Fufu
 			if (view.get<CameraComponent>(e).primary)
 				return Entity(e, this);
 		}
-		return Entity{}; // Aucune caméra primaire
+		return Entity{}; // Aucune camï¿½ra primaire
 	}
 
 }

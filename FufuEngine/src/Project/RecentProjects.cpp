@@ -1,5 +1,5 @@
 #include "depch.h"
-#include "Fufu/Project/RecentProjects.h"
+#include "Project/RecentProjects.h"
 #include <nlohmann/json.hpp>
 #include <fstream>
 #include <chrono>

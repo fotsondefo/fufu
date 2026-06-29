@@ -11,17 +11,15 @@ namespace Fufu
 	class AssetManager
 	{
 	public:
-		// Singleton
-		static AssetManager& get()
-		{
-			static AssetManager instance;
-			return instance;
-		}
+		explicit AssetManager(const std::filesystem::path& rootDir);
+		~AssetManager() = default;
 
-		// Enregistre un asset sans le charger (crée le .meta si absent)
+		// Scan the root directory when the project loads
+		void scanDirectory();
+
 		UUID registerAsset(const std::filesystem::path& path, AssetType type);
 
-		// Accès typé avec chargement différé
+		// Lazy loading to asset
 		template<typename T>
 		std::shared_ptr<T> getAsset(UUID uuid)
 		{
@@ -33,7 +31,6 @@ namespace Fufu
 			}
 
 			auto& asset = it->second;
-
 			if (asset->getMeta().state == AssetState::Unloaded)
 				loadAsset(asset);
 
@@ -43,38 +40,38 @@ namespace Fufu
 			return std::dynamic_pointer_cast<T>(asset);
 		}
 
-		// Raccourcis directs par chemin
+		// Shortcuts
 		std::shared_ptr<TextureAsset> getTexture(const std::filesystem::path& path);
-		std::shared_ptr<MeshAsset>    getMesh(const std::filesystem::path& path);
-		std::shared_ptr<ShaderAsset>  getShader(const std::filesystem::path& vertPath,
-			const std::filesystem::path& fragPath,
-			const std::filesystem::path& computePath = "");
+		std::shared_ptr<MeshAsset> getMesh(const std::filesystem::path& path);
+		std::shared_ptr<ShaderAsset>  getShader(const std::filesystem::path& vertPath, const std::filesystem::path& fragPath, const std::filesystem::path& computePath = "");
 
-		// Décharge un asset de la mémoire (repassera Unloaded)
 		void unload(UUID uuid);
 		void unloadAll();
 
-		// Lit/écrit le fichier .meta associé à un chemin
-		void        writeMeta(const AssetMeta& meta) const;
+		bool   hasAsset(UUID uuid)  const { return m_Pool.count(uuid) > 0; }
+		size_t assetCount() const { return m_Pool.size(); }
+
+		const std::filesystem::path& getRootDir() const { return m_RootDir; }
+
+		const std::unordered_map<UUID, std::shared_ptr<Asset>>& getPool() const
+		{
+			return m_Pool;
+		}
+
+		void writeMeta(const AssetMeta& meta) const;
 		std::optional<AssetMeta> readMeta(const std::filesystem::path& path) const;
 
-		bool        hasAsset(UUID uuid) const { return m_Pool.count(uuid) > 0; }
-		size_t      assetCount()        const { return m_Pool.size(); }
-
 	private:
-		AssetManager() = default;
-
 		void loadAsset(std::shared_ptr<Asset>& asset);
 		void loadTexture(std::shared_ptr<TextureAsset>& asset);
 		void loadMesh(std::shared_ptr<MeshAsset>&    asset);
 		void loadShader(std::shared_ptr<ShaderAsset>&  asset);
 
+		AssetType inferTypeFromExtension(const std::filesystem::path& path) const;
 		std::filesystem::path metaPath(const std::filesystem::path& sourcePath) const;
 
-		// Pool principal UUID ? Asset
+		std::filesystem::path m_RootDir;
 		std::unordered_map<UUID, std::shared_ptr<Asset>> m_Pool;
-
-		// Index chemin ? UUID pour les lookups directs
 		std::unordered_map<std::string, UUID> m_PathIndex;
 	};
 

@@ -1,6 +1,6 @@
 #include "depch.h"
 #include "Project/Entity.h"
-#include "Project/Scene.h"
+#include "Project/Scene/Scene.h"
 
 namespace Fufu 
 {
