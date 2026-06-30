@@ -7,11 +7,6 @@ namespace FufuStudio
 
 	class TitleBar
 	{
-		struct HitTestRect
-		{
-			float x, y, w, h;
-		};
-
 	public:
 		static constexpr float k_Height = 40.f;
 
@@ -27,7 +22,6 @@ namespace FufuStudio
 		void drawMenuBar(EditorState& state);
 		void drawProjectName(EditorState& state);
 		void drawWindowControls();
-		void registerNonDraggable(float x, float y, float w, float h);
 
 	private:
 		uint32_t m_LogoTextureID = 0;
@@ -40,7 +34,11 @@ namespace FufuStudio
 		glm::vec2 m_DragStartPos = glm::vec2(0.f);
 		glm::vec2 m_WindowStartPos = glm::vec2(0.f);
 
-		std::vector<HitTestRect> m_NonDraggableRects;
+		bool m_HoveringDragArea = false;
+
+		static bool s_HoveringDragArea;
+		static ImVec2 s_DragP0Screen;
+		static ImVec2 s_DragP1Screen;
 	};
 
 }

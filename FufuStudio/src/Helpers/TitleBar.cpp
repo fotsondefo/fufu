@@ -13,6 +13,9 @@
 
 namespace FufuStudio 
 {
+	bool TitleBar::s_HoveringDragArea = false;
+	ImVec2 TitleBar::s_DragP0Screen = ImVec2(0, 0);
+	ImVec2 TitleBar::s_DragP1Screen = ImVec2(0, 0);
 
 	static WNDPROC s_OriginalWndProc = nullptr;
 
@@ -34,31 +37,7 @@ namespace FufuStudio
 	}
 
 	void TitleBar::init(const std::filesystem::path& logoPath)
-	{
-		GLFWwindow* window = static_cast<GLFWwindow*>(Fufu::Application::get().getWindow().getNativeWindow());
-
-		glfwSetTitlebarHitTestCallback(window,
-			[](GLFWwindow* w, int x, int y, int* hit)
-			{
-				TitleBar* titleBar = static_cast<TitleBar*>(glfwGetWindowUserPointer(w));
-
-				*hit = 1; // draggable
-				if (!titleBar) return;
-
-				
-				for (const auto& rect : titleBar->m_NonDraggableRects)
-				{
-					if (x >= rect.x && x <= rect.x + rect.w && y >= rect.y && y <= rect.y + rect.h)
-					{
-						*hit = 0;
-						return;
-					}
-				}
-			}
-		);
-
-		//	glfwSetWindowUserPointer(window, this);
-
+	{	
 		// Logo
 		if (std::filesystem::exists(logoPath))
 		{
@@ -103,8 +82,6 @@ namespace FufuStudio
 
 	void TitleBar::onImGuiRender(EditorState& state)
 	{
-		m_NonDraggableRects.clear();
-
 		ImGuiViewport* vp = ImGui::GetMainViewport();
 
 		ImGui::SetNextWindowPos(vp->Pos);
@@ -123,34 +100,55 @@ namespace FufuStudio
 
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.f, 0.f));
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.f);
-		ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.09f, 0.10f, 0.11f, 1.f));
+		ImGui::PushStyleColor(ImGuiCol_WindowBg,
+			ImVec4(0.09f, 0.10f, 0.11f, 1.f));
 
 		ImGui::Begin("##TitleBar", nullptr, flags);
+
+		bool titleBarHovered = ImGui::IsWindowHovered();
+
+		ImVec2 p0 = ImGui::GetWindowPos();
+		ImVec2 p1 = ImVec2(p0.x + ImGui::GetWindowSize().x, p0.y + ImGui::GetWindowSize().y);
+		ImVec2 p0Screen = ImVec2(p0.x - vp->Pos.x, p0.y - vp->Pos.y);
+		ImVec2 p1Screen = ImVec2(p1.x - vp->Pos.x, p1.y - vp->Pos.y);
+
 		ImGui::PopStyleColor();
 		ImGui::PopStyleVar(2);
 
-		float windowWidth = ImGui::GetWindowWidth();
-
-		// --- Logo (Left) ---
-		ImGui::SetCursorPos(ImVec2(8.f, (k_Height - 24.f) * 0.5f));
+		// --- TitleBar Content (logo, menus, buttons) ---
 		drawLogo();
-
-		// --- Menu (After the logo) ---
 		ImGui::SameLine(0.f, 8.f);
-		ImGui::SetCursorPosY(0.f);
 		drawMenuBar(state);
-
-		// --- Project Name (center) ---
 		drawProjectName(state);
-
-		// --- System button (Right) ---
 		drawWindowControls();
 
-		float windowW = ImGui::GetWindowWidth();
-		registerNonDraggable(windowW - 46.f * 3.f, 0.f, 46.f * 3.f, k_Height);
-		registerNonDraggable(40.f, 0.f, 200.f, k_Height);
-
 		ImGui::End();
+
+		bool hoveringDragArea = titleBarHovered && !ImGui::IsAnyItemHovered();
+
+		s_HoveringDragArea = hoveringDragArea;
+		s_DragP0Screen = p0Screen;
+		s_DragP1Screen = p1Screen;
+
+		GLFWwindow* window = static_cast<GLFWwindow*>(Fufu::Application::get().getWindow().getNativeWindow());
+
+		glfwSetTitlebarHitTestCallback(window,
+			[](GLFWwindow* /*w*/, int x, int y, int* hit)
+			{
+				if (TitleBar::s_HoveringDragArea &&
+					x >= TitleBar::s_DragP0Screen.x &&
+					x <= TitleBar::s_DragP1Screen.x &&
+					y >= TitleBar::s_DragP0Screen.y &&
+					y <= TitleBar::s_DragP1Screen.y)
+				{
+					*hit = 1;
+				}
+				else
+				{
+					*hit = 0;
+				}
+			}
+		);
 	}
 
 	void TitleBar::drawLogo()
@@ -388,11 +386,6 @@ namespace FufuStudio
 
 		ImGui::PopStyleColor(3);
 		ImGui::PopStyleVar(3);
-	}
-
-	void TitleBar::registerNonDraggable(float x, float y, float w, float h)
-	{
-		m_NonDraggableRects.push_back({ x, y, w, h });
 	}
 
 }

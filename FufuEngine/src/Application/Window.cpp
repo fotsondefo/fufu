@@ -39,6 +39,8 @@ namespace Fufu
 
 		FUFU_INFO("Creating window '{}' ({}x{})", props.title, props.width, props.height);
 
+		glfwWindowHint(GLFW_TITLEBAR, GLFW_FALSE);
+
 		m_Window = glfwCreateWindow(
 			static_cast<int>(props.width),
 			static_cast<int>(props.height),
