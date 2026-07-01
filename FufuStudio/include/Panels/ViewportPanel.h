@@ -18,6 +18,8 @@ namespace FufuStudio
 	private:
 		void handleCameraInput(EditorState& state, float deltaTime);
 		void syncCameraToScene(EditorState& state);
+		void drawGizmo(EditorState& state);
+		void handleGizmoShortcuts(EditorState& state);
 
 	private:
 		Fufu::Renderer& m_Renderer;

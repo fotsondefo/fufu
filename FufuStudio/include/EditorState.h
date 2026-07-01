@@ -11,6 +11,22 @@ namespace FufuStudio
 {
 	struct EditorState
 	{
+		enum class GizmoOperation 
+		{ 
+			Translate, 
+			Rotate, 
+			Scale 
+		};
+		
+		enum class GizmoSpace 
+		{ 
+			World, 
+			Local 
+		};
+
+		GizmoOperation gizmoOperation = GizmoOperation::Translate;
+		GizmoSpace     gizmoSpace = GizmoSpace::World;
+
 		Fufu::Entity selectedEntity;
 
 		// Camera

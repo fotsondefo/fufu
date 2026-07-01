@@ -35,6 +35,24 @@ target_include_directories(imgui PUBLIC
 
 target_link_libraries(imgui PUBLIC glfw Fufu::Engine)
 
+FetchContent_Declare(
+    imguizmo
+    GIT_REPOSITORY https://github.com/CedricGuillemet/ImGuizmo.git
+    GIT_TAG        1.83
+)
+
+FetchContent_GetProperties(imguizmo)
+if(NOT imguizmo_POPULATED)
+    FetchContent_Populate(imguizmo)
+endif()
+
+add_library(imguizmo STATIC
+    ${imguizmo_SOURCE_DIR}/ImGuizmo.cpp
+)
+target_include_directories(imguizmo PUBLIC ${imguizmo_SOURCE_DIR})
+target_link_libraries(imguizmo PUBLIC imgui)
+target_compile_definitions(imguizmo PRIVATE IMGUI_DEFINE_MATH_OPERATORS)
+
 # Sources FufuStudio
 set(PROJECT_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/EditorMain.cpp)
 file(GLOB_RECURSE REC_SOURCES_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
@@ -50,6 +68,7 @@ target_include_directories(FufuStudio PRIVATE
 target_link_libraries(FufuStudio PRIVATE
     Fufu::Engine
     imgui
+	imguizmo
 	nfd
 )
 
