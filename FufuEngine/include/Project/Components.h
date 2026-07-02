@@ -72,6 +72,18 @@ namespace Fufu
 		uint64_t  normalTexID = 0;
 	};
 
+	// ---------------------------------------------------------- Prefab
+	// Marque la racine d'une entité instanciée depuis un prefab. Pour
+	// l'instant c'est un simple lien de provenance (snapshot figé, pas de
+	// synchronisation) : voir PrefabSerializer.
+	struct PrefabInstanceComponent
+	{
+		std::string prefabPath;
+
+		PrefabInstanceComponent() = default;
+		explicit PrefabInstanceComponent(const std::string& prefabPath) : prefabPath(prefabPath) {}
+	};
+
 	// --------------------------------------------------------------- Camera
 	enum class CameraProjection { Perspective, Orthographic };
 

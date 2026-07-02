@@ -22,6 +22,7 @@ namespace Fufu
 		std::filesystem::create_directories(m_Info.assetsDir() / "Materials");
 		std::filesystem::create_directories(m_Info.assetsDir() / "Shaders");
 		std::filesystem::create_directories(m_Info.scenesDir());
+		std::filesystem::create_directories(m_Info.prefabsDir());
 		std::filesystem::create_directories(m_Info.configDir() / "editor");
 
 		// Scan existing assets

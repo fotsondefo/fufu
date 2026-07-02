@@ -1,5 +1,6 @@
 #include "depch.h"
 #include "Project/Scene/SceneSerializer.h"
+#include "Project/Scene/EntitySerialization.h"
 #include "Project/Components.h"
 #include <nlohmann/json.hpp>
 #include <fstream>
@@ -9,99 +10,18 @@ using json = nlohmann::json;
 namespace Fufu {
 
 	// ----------------------------------------------------------------
-	// Helpers de sÈrialisation des types glm
+	// Migration de sch√©ma
 	// ----------------------------------------------------------------
-
-	static json serializeVec3(const glm::vec3& v)
+	// Appel√©e avec la version lue dans le fichier avant que deserialize()
+	// n'interpr√®te le JSON : transforme `root` en place jusqu'√† ce qu'il
+	// corresponde au sch√©ma de SceneSerializer::k_CurrentVersion.
+	// Exemple pour une future version 2 :
+	//   if (fromVersion < 2) { /* renommer un champ, ajouter une valeur par d√©faut... */ }
+	static void migrateSceneJson(json& root, int fromVersion)
 	{
-		return { {"x", v.x}, {"y", v.y}, {"z", v.z} };
-	}
-
-	static json serializeVec4(const glm::vec4& v)
-	{
-		return { {"x", v.x}, {"y", v.y}, {"z", v.z}, {"w", v.w} };
-	}
-
-	static glm::vec3 deserializeVec3(const json& j)
-	{
-		return { j.at("x").get<float>(), j.at("y").get<float>(), j.at("z").get<float>() };
-	}
-
-	static glm::vec4 deserializeVec4(const json& j)
-	{
-		return { j.at("x").get<float>(), j.at("y").get<float>(),
-				 j.at("z").get<float>(), j.at("w").get<float>() };
-	}
-
-	// ----------------------------------------------------------------
-	// SÈrialisation d'une entitÈ
-	// ----------------------------------------------------------------
-
-	static json serializeEntity(const Scene& scene, entt::entity handle, entt::registry& reg)
-	{
-		json j;
-		j["id"] = static_cast<uint32_t>(handle);
-
-		if (reg.all_of<TagComponent>(handle))
-			j["tag"] = reg.get<TagComponent>(handle).tag;
-
-		if (reg.all_of<TransformComponent>(handle))
-		{
-			auto& t = reg.get<TransformComponent>(handle);
-			j["transform"] = {
-				{ "position", serializeVec3(t.position) },
-				{ "rotation", serializeVec3(t.rotation) },
-				{ "scale",    serializeVec3(t.scale)    }
-			};
-		}
-
-		if (reg.all_of<ParentComponent>(handle))
-			j["parent"] = static_cast<uint32_t>(reg.get<ParentComponent>(handle).parent);
-
-		if (reg.all_of<ChildrenComponent>(handle))
-		{
-			json children = json::array();
-			for (entt::entity child : reg.get<ChildrenComponent>(handle).children)
-				children.push_back(static_cast<uint32_t>(child));
-			j["children"] = children;
-		}
-
-		if (reg.all_of<MeshComponent>(handle))
-		{
-			auto& m = reg.get<MeshComponent>(handle);
-			j["mesh"] = {
-				{ "path",   m.meshPath },
-				{ "meshID", m.meshID   }
-			};
-		}
-
-		if (reg.all_of<MaterialComponent>(handle))
-		{
-			auto& mat = reg.get<MaterialComponent>(handle);
-			j["material"] = {
-				{ "albedo",      serializeVec4(mat.albedo) },
-				{ "metallic",    mat.metallic              },
-				{ "roughness",   mat.roughness             },
-				{ "emissive",    mat.emissive              },
-				{ "albedoTexID", mat.albedoTexID           },
-				{ "normalTexID", mat.normalTexID           }
-			};
-		}
-
-		if (reg.all_of<CameraComponent>(handle))
-		{
-			auto& cam = reg.get<CameraComponent>(handle);
-			j["camera"] = {
-				{ "projection", cam.projection == CameraProjection::Perspective ? "perspective" : "orthographic" },
-				{ "fov",        cam.fov        },
-				{ "nearPlane",  cam.nearPlane  },
-				{ "farPlane",   cam.farPlane   },
-				{ "orthoSize",  cam.orthoSize  },
-				{ "primary",    cam.primary    }
-			};
-		}
-
-		return j;
+		(void)root;
+		(void)fromVersion;
+		// Rien √† migrer : la seule version existante est k_CurrentVersion.
 	}
 
 	// ----------------------------------------------------------------
@@ -112,12 +32,19 @@ namespace Fufu {
 	{
 		json root;
 		root["scene"] = m_Scene->getName();
-		root["version"] = 1;
+		root["version"] = SceneSerializer::k_CurrentVersion;
 		root["entities"] = json::array();
 
 		auto& reg = m_Scene->m_Registry;
+
+		// Index stable (position dans le fichier) ind√©pendant des handles entt,
+		// qui peuvent diff√©rer d'un chargement √† l'autre.
+		std::unordered_map<entt::entity, int> indexMap;
+		int nextIndex = 0;
+		reg.each([&](entt::entity handle) { indexMap[handle] = nextIndex++; });
+
 		reg.each([&](entt::entity handle) {
-			root["entities"].push_back(serializeEntity(*m_Scene, handle, reg));
+			root["entities"].push_back(serializeEntityToJson(handle, reg, indexMap));
 		});
 
 		std::ofstream file(path);
@@ -147,75 +74,40 @@ namespace Fufu {
 			return false;
 		}
 
+		int fileVersion = root.value("version", 1);
+		if (fileVersion > SceneSerializer::k_CurrentVersion)
+		{
+			FUFU_WARN("Scene '{}' was saved with a newer format (v{} > v{} supported) ‚Äî loading best-effort",
+				path.string(), fileVersion, SceneSerializer::k_CurrentVersion);
+		}
+		else if (fileVersion < SceneSerializer::k_CurrentVersion)
+		{
+			migrateSceneJson(root, fileVersion);
+		}
+
 		m_Scene->setName(root.at("scene").get<std::string>());
+
+		// id (tel qu'√©crit dans le fichier) -> entit√© nouvellement cr√©√©e.
+		std::unordered_map<int, Entity> idToEntity;
 
 		for (const auto& j : root.at("entities"))
 		{
-			Entity entity = m_Scene->createEntity(
-				j.value("tag", "Entity")
-			);
-
-			// Transform ó dÈj‡ ajoutÈ par createEntity, on Ècrase les valeurs
-			if (j.contains("transform"))
-			{
-				auto& t = entity.getComponent<TransformComponent>();
-				t.position = deserializeVec3(j["transform"]["position"]);
-				t.rotation = deserializeVec3(j["transform"]["rotation"]);
-				t.scale = deserializeVec3(j["transform"]["scale"]);
-			}
-
-			if (j.contains("mesh"))
-			{
-				entity.addComponent<MeshComponent>(
-					j["mesh"].at("path").get<std::string>(),
-					j["mesh"].at("meshID").get<uint64_t>()
-					);
-			}
-
-			if (j.contains("material"))
-			{
-				MaterialComponent mat;
-				mat.albedo = deserializeVec4(j["material"]["albedo"]);
-				mat.metallic = j["material"].value("metallic", 0.f);
-				mat.roughness = j["material"].value("roughness", 1.f);
-				mat.emissive = j["material"].value("emissive", 0.f);
-				mat.albedoTexID = j["material"].value("albedoTexID", uint64_t(0));
-				mat.normalTexID = j["material"].value("normalTexID", uint64_t(0));
-				entity.addComponent<MaterialComponent>(mat);
-			}
-
-			if (j.contains("camera"))
-			{
-				CameraComponent cam;
-				std::string proj = j["camera"].value("projection", "perspective");
-				cam.projection = (proj == "orthographic")
-					? CameraProjection::Orthographic
-					: CameraProjection::Perspective;
-				cam.fov = j["camera"].value("fov", glm::radians(45.f));
-				cam.nearPlane = j["camera"].value("nearPlane", 0.1f);
-				cam.farPlane = j["camera"].value("farPlane", 1000.f);
-				cam.orthoSize = j["camera"].value("orthoSize", 10.f);
-				cam.primary = j["camera"].value("primary", false);
-				entity.addComponent<CameraComponent>(cam);
-			}
+			Entity entity = createEntityFromJson(m_Scene, j);
+			idToEntity[j.at("id").get<int>()] = entity;
 		}
 
-		// DeuxiËme passe pour reconstruire la hiÈrarchie
-		// (les entitÈs enfants doivent exister avant de linker)
+		// Deuxi√®me passe pour reconstruire la hi√©rarchie (toutes les entit√©s
+		// doivent exister avant de r√©soudre les liens parent/enfant).
 		for (const auto& j : root.at("entities"))
 		{
 			if (!j.contains("parent"))
 				continue;
 
-			entt::entity childHandle = static_cast<entt::entity>(j.at("id").get<uint32_t>());
-			entt::entity parentHandle = static_cast<entt::entity>(j.at("parent").get<uint32_t>());
+			auto childIt = idToEntity.find(j.at("id").get<int>());
+			auto parentIt = idToEntity.find(j.at("parent").get<int>());
 
-			if (m_Scene->m_Registry.valid(childHandle) && m_Scene->m_Registry.valid(parentHandle))
-			{
-				Entity child(childHandle, m_Scene);
-				Entity parent(parentHandle, m_Scene);
-				m_Scene->setParent(child, parent);
-			}
+			if (childIt != idToEntity.end() && parentIt != idToEntity.end())
+				m_Scene->setParent(childIt->second, parentIt->second);
 		}
 
 		FUFU_INFO("Scene '{}' deserialized from '{}'", m_Scene->getName(), path.string());

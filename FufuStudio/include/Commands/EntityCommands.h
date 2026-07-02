@@ -175,7 +175,8 @@ namespace FufuStudio
 		std::vector<Fufu::Entity> m_Children;
 	};
 
-	// Change le parent d'une entit� (drag & drop dans la Hierarchy).
+	// Change le parent d'une entité (drag & drop dans la Hierarchy). Un
+	// newParent invalide signifie "déparenter" (utilisé par l'action Unparent).
 	class EntityReparentCommand : public ICommand
 	{
 	public:
@@ -189,7 +190,13 @@ namespace FufuStudio
 			}
 		}
 
-		void execute() override { m_Scene->setParent(m_Child, m_NewParent); }
+		void execute() override
+		{
+			if (m_NewParent && m_NewParent.isValid())
+				m_Scene->setParent(m_Child, m_NewParent);
+			else
+				m_Scene->removeParent(m_Child);
+		}
 
 		void undo() override
 		{
@@ -206,5 +213,68 @@ namespace FufuStudio
 		Fufu::Entity m_Child;
 		Fufu::Entity m_NewParent;
 		Fufu::Entity m_OldParent;
+	};
+
+	// Regroupe plusieurs entités sous une nouvelle entité vide (les transforms
+	// sont en espace monde dans ce moteur : aucun recalcul n'est nécessaire,
+	// les entités groupées gardent visuellement leur position).
+	class EntityGroupCommand : public ICommand
+	{
+	public:
+		EntityGroupCommand(std::shared_ptr<Fufu::Scene> scene, std::vector<Fufu::Entity> targets,
+			std::string tag = "Group")
+			: m_Scene(std::move(scene)), m_Targets(std::move(targets)), m_Tag(std::move(tag))
+		{
+			m_OldParents.reserve(m_Targets.size());
+			for (Fufu::Entity target : m_Targets)
+			{
+				Fufu::Entity oldParent;
+				if (target.hasComponent<Fufu::ParentComponent>())
+					oldParent = Fufu::Entity(target.getComponent<Fufu::ParentComponent>().parent, m_Scene.get());
+
+				m_OldParents.push_back(oldParent);
+			}
+		}
+
+		void execute() override
+		{
+			m_Group = m_Scene->createEntity(m_Tag);
+
+			for (Fufu::Entity target : m_Targets)
+			{
+				if (target.isValid())
+					m_Scene->setParent(target, m_Group);
+			}
+		}
+
+		void undo() override
+		{
+			for (std::size_t i = 0; i < m_Targets.size(); ++i)
+			{
+				if (!m_Targets[i].isValid())
+					continue;
+
+				if (m_OldParents[i].isValid())
+					m_Scene->setParent(m_Targets[i], m_OldParents[i]);
+				else
+					m_Scene->removeParent(m_Targets[i]);
+			}
+
+			if (m_Group.isValid())
+				m_Scene->destroyEntity(m_Group);
+
+			m_Group = {};
+		}
+
+		const char* getName() const override { return "Group Entities"; }
+
+		Fufu::Entity getEntity() const { return m_Group; }
+
+	private:
+		std::shared_ptr<Fufu::Scene> m_Scene;
+		std::vector<Fufu::Entity> m_Targets;
+		std::vector<Fufu::Entity> m_OldParents;
+		std::string m_Tag;
+		Fufu::Entity m_Group;
 	};
 }

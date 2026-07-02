@@ -1,13 +1,25 @@
 #include "Panels/HierarchyPanel.h"
 #include <Project/Components.h>
+#include <Project/PrefabSerializer.h>
+#include <Application/Application.h>
 #include <imgui.h>
+#include <nfd.hpp>
 #include "Helpers/FontIcons.h"
 #include "Commands/CommandHistory.h"
 #include "Commands/CompositeCommand.h"
 #include "Commands/EntityCommands.h"
+#include "Commands/PrefabCommands.h"
 
-namespace FufuStudio 
+namespace FufuStudio
 {
+	static std::filesystem::path defaultPrefabsDir()
+	{
+		auto& pm = Fufu::Application::get().getProjectManager();
+		return pm.hasProject()
+			? pm.getCurrentProject().getInfo().prefabsDir()
+			: std::filesystem::current_path();
+	}
+
 	void HierarchyPanel::onImGuiRender(EditorState& state)
 	{
 		ImGui::Begin(ICON_FA_BAR_CHART " Hierarchy##hierarchy");
@@ -100,7 +112,37 @@ namespace FufuStudio
 
 			if (ImGui::MenuItem("Duplicate"))
 				state.commandHistory->executeCommand<EntityDuplicateCommand>(activeScene, entity);
-			
+
+			if (entity.hasComponent<Fufu::ParentComponent>() && ImGui::MenuItem("Unparent"))
+				state.commandHistory->executeCommand<EntityReparentCommand>(activeScene, entity, Fufu::Entity{});
+
+			if (state.selection.size() > 1 && state.selection.isSelected(entity) && ImGui::MenuItem("Group Selected"))
+			{
+				auto* cmd = state.commandHistory->executeCommand<EntityGroupCommand>(activeScene, state.selection.entities());
+				state.selection.select(cmd->getEntity());
+			}
+
+			ImGui::Separator();
+
+			if (ImGui::MenuItem("Create Prefab..."))
+			{
+				NFD::Guard nfdGuard;
+				NFD::UniquePath outPath;
+				nfdfilteritem_t filter = { "Fufu Prefab", "fufuprefab" };
+				std::filesystem::path defaultDir = defaultPrefabsDir();
+				std::string defaultName = tag + ".fufuprefab";
+
+				nfdresult_t result = NFD::SaveDialog(outPath, &filter, 1,
+					defaultDir.string().c_str(), defaultName.c_str());
+
+				if (result == NFD_OKAY)
+				{
+					std::filesystem::path path(outPath.get());
+					if (path.extension().empty()) path += ".fufuprefab";
+					Fufu::PrefabSerializer::save(activeScene.get(), entity, path);
+				}
+			}
+
 			ImGui::Separator();
 			if (ImGui::MenuItem("Delete"))
 				deleted = true;
@@ -197,6 +239,33 @@ namespace FufuStudio
 			{
 				state.commandHistory->executeCommand<EntityCreateCommand>(activeScene, "Camera", Fufu::Entity{},
 					[](Fufu::Entity e) { e.addComponent<Fufu::CameraComponent>(); });
+			}
+
+			if (state.selection.size() > 1 && ImGui::MenuItem("Group Selected"))
+			{
+				auto* cmd = state.commandHistory->executeCommand<EntityGroupCommand>(activeScene, state.selection.entities());
+				state.selection.select(cmd->getEntity());
+			}
+
+			ImGui::Separator();
+
+			if (ImGui::MenuItem("Instantiate Prefab..."))
+			{
+				NFD::Guard nfdGuard;
+				NFD::UniquePath inPath;
+				nfdfilteritem_t filter = { "Fufu Prefab", "fufuprefab" };
+				std::filesystem::path defaultDir = defaultPrefabsDir();
+
+				nfdresult_t result = NFD::OpenDialog(inPath, &filter, 1, defaultDir.string().c_str());
+
+				if (result == NFD_OKAY)
+				{
+					auto* cmd = state.commandHistory->executeCommand<PrefabInstantiateCommand>(
+						activeScene, std::filesystem::path(inPath.get()));
+
+					if (cmd->getEntity().isValid())
+						state.selection.select(cmd->getEntity());
+				}
 			}
 
 			ImGui::EndPopup();

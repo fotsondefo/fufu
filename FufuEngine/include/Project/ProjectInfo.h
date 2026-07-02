@@ -20,6 +20,7 @@ namespace Fufu
 		std::filesystem::path scenesDir() const { return rootDirectory / "Scenes"; }
 		std::filesystem::path assetsDir() const { return rootDirectory / "Assets"; }
 		std::filesystem::path configDir() const { return rootDirectory / "Config"; }
+		std::filesystem::path prefabsDir() const { return rootDirectory / "Prefabs"; }
 	};
 
 }
