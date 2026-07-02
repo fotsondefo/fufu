@@ -5,7 +5,7 @@
 namespace Fufu 
 {
 
-	// Forward declaration — évite l'inclusion circulaire avec Scene.h
+	// Forward declaration ï¿½ ï¿½vite l'inclusion circulaire avec Scene.h
 	class Scene;
 
 	class Entity
@@ -46,6 +46,3 @@ namespace Fufu
 	};
 
 }
-
-// Inclusion différée — à ce stade Scene est déjà déclaré
-#include "EntityImpl.h"

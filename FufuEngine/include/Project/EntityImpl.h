@@ -1,6 +1,6 @@
 #pragma once
-// EntityImpl.h est inclus à la fin de Entity.h,
-// à ce moment Scene.h est déjà inclus donc m_Registry est accessible.
+// EntityImpl.h est inclus a la fin de Scene.h,
+// a ce moment Scene est completement defini donc m_Registry est accessible.
 
 namespace Fufu {
 

@@ -45,3 +45,7 @@ namespace Fufu
 	};
 
 }
+
+// Inclusion differee : a ce stade Scene est completement defini,
+// EntityImpl.h peut donc implementer les methodes template d'Entity.
+#include "Project/EntityImpl.h"

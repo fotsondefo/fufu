@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.12)
+cmake_minimum_required(VERSION 3.12...4.3)
 project(Fufu VERSION 0.1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -9,10 +9,15 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/build/lib)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/build/lib)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/build/bin)
+set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 
 # Options de build
 option(FUFU_BUILD_STUDIO  "Build FufuStudio (Editor)"  ON)
 option(FUFU_BUILD_RUNTIME "Build FufuRuntime"          ON)
+
+if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.30")
+    cmake_policy(SET CMP0169 OLD)
+endif()
 
 # Dépendances externes via vcpkg ou find_package
 find_package(OpenGL REQUIRED)
@@ -58,21 +63,6 @@ if(NOT entt_POPULATED)
     add_subdirectory(${entt_SOURCE_DIR} ${entt_BINARY_DIR})
 endif()
 
-# yaml-cpp
-FetchContent_Declare(
-    yamlcpp
-    GIT_REPOSITORY https://github.com/jbeder/yaml-cpp.git
-    GIT_TAG        0.8.0
-)
-set(YAML_CPP_BUILD_TESTS   OFF CACHE BOOL "" FORCE)
-set(YAML_CPP_BUILD_TOOLS   OFF CACHE BOOL "" FORCE)
-set(YAML_CPP_BUILD_CONTRIB OFF CACHE BOOL "" FORCE)
-FetchContent_GetProperties(yamlcpp)
-if(NOT yamlcpp_POPULATED)
-    FetchContent_Populate(yamlcpp)
-    add_subdirectory(${yamlcpp_SOURCE_DIR} ${yamlcpp_BINARY_DIR})
-endif()
-
 # assimp
 FetchContent_Declare(
     assimp
@@ -82,6 +72,8 @@ FetchContent_Declare(
 set(ASSIMP_BUILD_TESTS        OFF CACHE BOOL "" FORCE)
 set(ASSIMP_BUILD_ASSIMP_TOOLS OFF CACHE BOOL "" FORCE)
 set(ASSIMP_INSTALL            OFF CACHE BOOL "" FORCE)
+set(ASSIMP_WARNINGS_AS_ERRORS OFF CACHE BOOL "" FORCE) 
+set(BUILD_SHARED_LIBS         OFF CACHE BOOL "" FORCE) 
 FetchContent_GetProperties(assimp)
 if(NOT assimp_POPULATED)
     FetchContent_Populate(assimp)
