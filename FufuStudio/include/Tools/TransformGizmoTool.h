@@ -4,10 +4,13 @@
 #include "EditorState.h"
 #include "Helpers/FontIcons.h"
 #include "Commands/CommandHistory.h"
+#include "Commands/CompositeCommand.h"
 #include "Commands/ComponentCommands.h"
 #include <Renderer/Renderer.h>
 #include <Project/Components.h>
-#include <optional>
+#include <memory>
+#include <utility>
+#include <vector>
 #include <imgui.h>
 #include <ImGuizmo.h>
 #include <glm/gtc/type_ptr.hpp>
@@ -59,10 +62,11 @@ namespace FufuStudio
 
 		void onViewportOverlay(EditorState& state) override
 		{
-			if (!state.selectedEntity || !state.selectedEntity.isValid())
+			if (state.selection.empty())
 				return;
 
-			if (!state.selectedEntity.hasComponent<Fufu::TransformComponent>())
+			Fufu::Entity primary = state.selection.primary();
+			if (!primary || !primary.isValid() || !primary.hasComponent<Fufu::TransformComponent>())
 				return;
 
 			auto scene = state.getActiveScene();
@@ -89,14 +93,22 @@ namespace FufuStudio
 			// OpenGL → ImGuizmo attend Y inversé sur la projection
 			proj[1][1] *= -1.f;
 
-			// Matrice de l'entité sélectionnée
-			auto& entityTransform = state.selectedEntity.getComponent<Fufu::TransformComponent>();
-			glm::mat4 model = entityTransform.getTransform();
+			// Le gizmo se positionne sur l'entité "primaire" (pivot du groupe).
+			auto& primaryTransform = primary.getComponent<Fufu::TransformComponent>();
+			glm::mat4 oldModel = primaryTransform.getTransform();
+			glm::mat4 model = oldModel;
 
 			// Tant que le gizmo n'est pas en cours d'utilisation, on garde un snapshot
-			// à jour : c'est la valeur "avant" qu'on utilisera si un drag démarre.
+			// à jour de TOUTE la sélection : c'est la valeur "avant" utilisée si un drag démarre.
 			if (!m_GizmoWasUsing)
-				m_GizmoBeforeEdit = entityTransform;
+			{
+				m_GroupBeforeEdit.clear();
+				for (Fufu::Entity e : state.selection.entities())
+				{
+					if (e.isValid() && e.hasComponent<Fufu::TransformComponent>())
+						m_GroupBeforeEdit.emplace_back(e, e.getComponent<Fufu::TransformComponent>());
+				}
+			}
 
 			ImGuizmo::OPERATION op;
 			switch (m_Operation)
@@ -121,24 +133,45 @@ namespace FufuStudio
 
 			if (manipulated)
 			{
-				// Décomposer la matrice résultante en position/rotation/scale
-				float translation[3], rotation[3], scale[3];
-				ImGuizmo::DecomposeMatrixToComponents(glm::value_ptr(model), translation, rotation, scale);
+				applyDecomposedTransform(model, primaryTransform);
 
-				entityTransform.position = glm::vec3(translation[0], translation[1], translation[2]);
-				entityTransform.rotation = glm::vec3(
-					glm::radians(rotation[0]), glm::radians(rotation[1]), glm::radians(rotation[2]));
-				entityTransform.scale = glm::vec3(scale[0], scale[1], scale[2]);
+				// Répercute le même delta (autour du pivot primaire) sur le reste
+				// de la sélection, pour un déplacement de groupe cohérent.
+				if (state.selection.size() > 1)
+				{
+					glm::mat4 delta = model * glm::inverse(oldModel);
+
+					for (Fufu::Entity e : state.selection.entities())
+					{
+						if (e == primary || !e.isValid() || !e.hasComponent<Fufu::TransformComponent>())
+							continue;
+
+						auto& t = e.getComponent<Fufu::TransformComponent>();
+						glm::mat4 newModel = delta * t.getTransform();
+						applyDecomposedTransform(newModel, t);
+					}
+				}
 
 				m_Renderer.resetAccumulation();
 			}
 
 			bool usingNow = ImGuizmo::IsUsing();
-			if (m_GizmoWasUsing && !usingNow && m_GizmoBeforeEdit.has_value())
+			if (m_GizmoWasUsing && !usingNow && !m_GroupBeforeEdit.empty())
 			{
-				state.commandHistory->executeCommand<ComponentEditCommand<Fufu::TransformComponent>>(
-					state.selectedEntity, *m_GizmoBeforeEdit, entityTransform);
-				m_GizmoBeforeEdit.reset();
+				auto composite = std::make_unique<CompositeCommand>("Transform Selection");
+				for (auto& [entity, before] : m_GroupBeforeEdit)
+				{
+					if (entity.isValid())
+					{
+						composite->add(std::make_unique<ComponentEditCommand<Fufu::TransformComponent>>(
+							entity, before, entity.getComponent<Fufu::TransformComponent>()));
+					}
+				}
+
+				if (!composite->empty())
+					state.commandHistory->execute(std::move(composite));
+
+				m_GroupBeforeEdit.clear();
 			}
 			m_GizmoWasUsing = usingNow;
 		}
@@ -147,13 +180,24 @@ namespace FufuStudio
 		enum class Operation { Translate, Rotate, Scale };
 		enum class Space { World, Local };
 
+		static void applyDecomposedTransform(const glm::mat4& model, Fufu::TransformComponent& transform)
+		{
+			float translation[3], rotation[3], scale[3];
+			ImGuizmo::DecomposeMatrixToComponents(glm::value_ptr(model), translation, rotation, scale);
+
+			transform.position = glm::vec3(translation[0], translation[1], translation[2]);
+			transform.rotation = glm::vec3(
+				glm::radians(rotation[0]), glm::radians(rotation[1]), glm::radians(rotation[2]));
+			transform.scale = glm::vec3(scale[0], scale[1], scale[2]);
+		}
+
 		Fufu::Renderer& m_Renderer;
 		Operation m_Operation = Operation::Translate;
 		Space m_Space = Space::World;
 
-		// Tracking du drag pour l'undo : snapshot pris juste avant le début du
-		// drag, commande poussée quand il se termine (voir onViewportOverlay).
+		// Tracking du drag pour l'undo : snapshot de toute la sélection pris juste
+		// avant le début du drag, commande unique poussée quand il se termine.
 		bool m_GizmoWasUsing = false;
-		std::optional<Fufu::TransformComponent> m_GizmoBeforeEdit;
+		std::vector<std::pair<Fufu::Entity, Fufu::TransformComponent>> m_GroupBeforeEdit;
 	};
 }

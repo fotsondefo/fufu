@@ -3,6 +3,7 @@
 #include <imgui.h>
 #include "Helpers/FontIcons.h"
 #include "Commands/CommandHistory.h"
+#include "Commands/CompositeCommand.h"
 #include "Commands/EntityCommands.h"
 
 namespace FufuStudio 
@@ -39,7 +40,15 @@ namespace FufuStudio
 
 		// Deselect if we clic on an empty area
 		if (ImGui::IsWindowHovered() && ImGui::IsMouseClicked(0) && !ImGui::IsAnyItemHovered())
-			state.selectedEntity = Fufu::Entity{};
+			state.selection.clear();
+
+		// Delete key : supprime toute la sélection courante
+		if (ImGui::IsWindowFocused() && ImGui::IsKeyPressed(ImGuiKey_Delete) && !state.selection.empty())
+		{
+			std::vector<Fufu::Entity> targets = state.selection.entities();
+			state.selection.clear();
+			deleteEntities(state, activeScene, targets);
+		}
 
 		drawContextMenu(state);
 
@@ -55,7 +64,7 @@ namespace FufuStudio
 			ImGuiTreeNodeFlags_OpenOnDoubleClick |
 			ImGuiTreeNodeFlags_SpanAvailWidth;
 
-		if (state.selectedEntity == entity)
+		if (state.selection.isSelected(entity))
 			flags |= ImGuiTreeNodeFlags_Selected;
 
 		bool hasChildren = entity.hasComponent<Fufu::ChildrenComponent>() && !entity.getComponent<Fufu::ChildrenComponent>().children.empty();
@@ -73,7 +82,12 @@ namespace FufuStudio
 		);
 
 		if (ImGui::IsItemClicked())
-			state.selectedEntity = entity;
+		{
+			if (ImGui::GetIO().KeyCtrl)
+				state.selection.toggle(entity);
+			else
+				state.selection.select(entity);
+		}
 
 		std::shared_ptr<Fufu::Scene> activeScene = state.getActiveScene();
 
@@ -134,11 +148,40 @@ namespace FufuStudio
 		// Delete after rendering to prevent the registry from being invalidated
 		if (deleted)
 		{
-			if (state.selectedEntity == entity)
-				state.selectedEntity = Fufu::Entity{};
+			// Si l'entité fait partie d'une multi-sélection, on supprime tout le
+			// groupe (en un seul undo) ; sinon on ne touche qu'à cette entité.
+			bool wasSelected = state.selection.isSelected(entity);
+			std::vector<Fufu::Entity> targets = (wasSelected && state.selection.size() > 1)
+				? state.selection.entities()
+				: std::vector<Fufu::Entity>{ entity };
 
-			state.commandHistory->executeCommand<EntityDestroyCommand>(activeScene, entity);
+			if (wasSelected)
+				state.selection.clear();
+
+			deleteEntities(state, activeScene, targets);
 		}
+	}
+
+	void HierarchyPanel::deleteEntities(EditorState& state, std::shared_ptr<Fufu::Scene> scene,
+		const std::vector<Fufu::Entity>& targets)
+	{
+		if (targets.empty()) return;
+
+		if (targets.size() == 1)
+		{
+			state.commandHistory->executeCommand<EntityDestroyCommand>(scene, targets.front());
+			return;
+		}
+
+		auto composite = std::make_unique<CompositeCommand>("Delete Entities");
+		for (Fufu::Entity e : targets)
+		{
+			if (e.isValid())
+				composite->add(std::make_unique<EntityDestroyCommand>(scene, e));
+		}
+
+		if (!composite->empty())
+			state.commandHistory->execute(std::move(composite));
 	}
 
 	void HierarchyPanel::drawContextMenu(EditorState& state)

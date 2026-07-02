@@ -103,7 +103,7 @@ namespace FufuStudio
 		{
 			auto scene = sm.newScene("New Scene");
 			sm.setActiveScene("New Scene");
-			state.selectedEntity = Fufu::Entity{};
+			state.selection.clear();
 			Fufu::Application::get().getRenderer().resetAccumulation();
 		}
 
@@ -127,7 +127,7 @@ namespace FufuStudio
 			if (ImGui::IsItemClicked())
 			{
 				sm.setActiveScene(name);
-				state.selectedEntity = Fufu::Entity{};
+				state.selection.clear();
 
 				Fufu::Application::get().getRenderer().resetAccumulation();
 			}

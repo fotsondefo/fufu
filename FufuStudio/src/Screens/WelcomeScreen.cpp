@@ -71,7 +71,7 @@ namespace FufuStudio
 			{
 				if (pm.openProject(path.get()))
 				{
-					state.selectedEntity = Fufu::Entity{};
+					state.selection.clear();
 					Fufu::Application::get().getRenderer().resetAccumulation();
 					ImGui::End();
 
@@ -109,7 +109,7 @@ namespace FufuStudio
 			{
 				if (pm.openProject(entry.path))
 				{
-					state.selectedEntity = Fufu::Entity{};
+					state.selection.clear();
 					Fufu::Application::get().getRenderer().resetAccumulation();
 				}
 			}
@@ -167,7 +167,7 @@ namespace FufuStudio
 
 			if (project)
 			{
-				state.selectedEntity = Fufu::Entity{};
+				state.selection.clear();
 				Fufu::Application::get().getRenderer().resetAccumulation();
 			}
 		}

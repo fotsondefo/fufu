@@ -25,7 +25,7 @@ namespace FufuStudio
 		auto scene = sm.newScene("Untitled");
 		sm.setActiveScene("Untitled");
 
-		state.selectedEntity = Fufu::Entity{};
+		state.selection.clear();
 		if (state.commandHistory) state.commandHistory->clear();
 		Fufu::Application::get().getRenderer().resetAccumulation();
 
@@ -101,7 +101,7 @@ namespace FufuStudio
 			if (!scene) return false;
 
 			sm.setActiveScene(scene->getName());
-			state.selectedEntity = Fufu::Entity{};
+			state.selection.clear();
 			if (state.commandHistory) state.commandHistory->clear();
 			Fufu::Application::get().getRenderer().resetAccumulation();
 			return true;

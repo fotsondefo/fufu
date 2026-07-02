@@ -6,6 +6,7 @@
 #include <Project/Scene/Scene.h>
 #include <Application/Application.h>
 #include "Panels/ImGuiContext.h"
+#include "Selection.h"
 
 namespace FufuStudio
 {
@@ -13,7 +14,7 @@ namespace FufuStudio
 
 	struct EditorState
 	{
-		Fufu::Entity selectedEntity;
+		Selection selection;
 
 		// Camera
 		glm::vec3 cameraPosition = { 0.f, 1.f, 5.f };

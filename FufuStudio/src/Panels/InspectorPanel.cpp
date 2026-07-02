@@ -61,14 +61,17 @@ namespace FufuStudio
 	{
 		ImGui::Begin(ICON_FA_SLIDERS " Inspector##inspector");
 
-		if (!state.selectedEntity || !state.selectedEntity.isValid())
+		Fufu::Entity entity = state.selection.primary();
+
+		if (!entity || !entity.isValid())
 		{
 			ImGui::TextDisabled("No entity selected");
 			ImGui::End();
 			return;
 		}
 
-		Fufu::Entity entity = state.selectedEntity;
+		if (state.selection.size() > 1)
+			ImGui::TextDisabled("+%d more selected", static_cast<int>(state.selection.size()) - 1);
 
 		drawTag(entity, state);
 		ImGui::Separator();
