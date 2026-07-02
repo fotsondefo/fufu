@@ -1,5 +1,6 @@
 #include "SceneIO.h"
 #include "Application/Application.h"
+#include "Commands/CommandHistory.h"
 #include <nfd.hpp>
 
 namespace FufuStudio 
@@ -25,6 +26,7 @@ namespace FufuStudio
 		sm.setActiveScene("Untitled");
 
 		state.selectedEntity = Fufu::Entity{};
+		if (state.commandHistory) state.commandHistory->clear();
 		Fufu::Application::get().getRenderer().resetAccumulation();
 
 		return true;
@@ -100,6 +102,7 @@ namespace FufuStudio
 
 			sm.setActiveScene(scene->getName());
 			state.selectedEntity = Fufu::Entity{};
+			if (state.commandHistory) state.commandHistory->clear();
 			Fufu::Application::get().getRenderer().resetAccumulation();
 			return true;
 		}

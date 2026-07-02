@@ -2,6 +2,8 @@
 
 #include "IEditorPanel.h"
 #include <Renderer/Renderer.h>
+#include <Project/Components.h>
+#include <optional>
 
 namespace FufuStudio
 {
@@ -27,6 +29,11 @@ namespace FufuStudio
 		// Tracking souris pour le mode FPS
 		glm::vec2 m_LastMousePos = { 0.f, 0.f };
 		bool      m_FirstMouse = true;
+
+		// Tracking du drag de gizmo pour l'undo : snapshot pris juste avant
+		// le d�but du drag, commande pouss�e quand il se termine.
+		bool m_GizmoWasUsing = false;
+		std::optional<Fufu::TransformComponent> m_GizmoBeforeEdit;
 	};
 
 }

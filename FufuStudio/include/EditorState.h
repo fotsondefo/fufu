@@ -7,8 +7,10 @@
 #include <Application/Application.h>
 #include "Panels/ImGuiContext.h"
 
-namespace FufuStudio 
+namespace FufuStudio
 {
+	class CommandHistory;
+
 	struct EditorState
 	{
 		enum class GizmoOperation 
@@ -42,6 +44,9 @@ namespace FufuStudio
 
 		// IMGUI
 		ImGuiContext* imGuiContext = nullptr;
+
+		// Undo/Redo
+		CommandHistory* commandHistory = nullptr;
 
 		std::shared_ptr<Fufu::Scene> getActiveScene() const
 		{

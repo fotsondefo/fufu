@@ -15,7 +15,9 @@ namespace FufuStudio
 		: Fufu::ILayer("StudioLayer")
 		, m_ViewportPanel(Fufu::Application::get().getRenderer())
 		, m_RendererSettingsPanel(Fufu::Application::get().getRenderer())
-	{}
+	{
+		m_State.commandHistory = &m_CommandHistory;
+	}
 
 	void StudioLayer::onAttach()
 	{
@@ -73,7 +75,7 @@ namespace FufuStudio
 	void StudioLayer::onEvent(Fufu::Event& /*e*/)
 	{
 		// Les events souris/clavier sont lus directement via GLFW dans ViewportPanel
-		// quand le viewport est focused — pas besoin de dispatcher ici pour l'instant
+		// quand le viewport est focused ï¿½ pas besoin de dispatcher ici pour l'instant
 	}
 
 	void StudioLayer::buildDockspace()
@@ -124,6 +126,16 @@ namespace FufuStudio
 
 			if (ImGui::IsKeyPressed(ImGuiKey_N))
 				SceneIO::newScene(m_State);
+
+			// Ne pas intercepter Ctrl+Z/Y pendant qu'un widget (ex : InputText)
+			// a le focus : il gï¿½re son propre undo local.
+			if (!ImGui::IsAnyItemActive())
+			{
+				if (ImGui::IsKeyPressed(ImGuiKey_Z))
+					m_CommandHistory.undo();
+				if (ImGui::IsKeyPressed(ImGuiKey_Y))
+					m_CommandHistory.redo();
+			}
 		}
 	}
 

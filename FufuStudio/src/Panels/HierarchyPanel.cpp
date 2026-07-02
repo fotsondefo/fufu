@@ -2,6 +2,8 @@
 #include <Project/Components.h>
 #include <imgui.h>
 #include "Helpers/FontIcons.h"
+#include "Commands/CommandHistory.h"
+#include "Commands/EntityCommands.h"
 
 namespace FufuStudio 
 {
@@ -20,7 +22,7 @@ namespace FufuStudio
 
 		// Create Entity button
 		if (ImGui::Button("+ Entity"))
-			activeScene->createEntity("New Entity");
+			state.commandHistory->executeCommand<EntityCreateCommand>(activeScene, "New Entity");
 
 		ImGui::Separator();
 
@@ -80,19 +82,10 @@ namespace FufuStudio
 		if (ImGui::BeginPopupContextItem())
 		{
 			if (ImGui::MenuItem("Create Child"))
-			{
-				auto child = activeScene->createEntity("Child Entity");
-				activeScene->setParent(child, entity);
-			}
-			if (ImGui::MenuItem("Duplicate"))
-			{
-				// Duplicate : copy Tag and Transform
-				auto dup = activeScene->createEntity(tag + " (copy)");
-				auto& srcT = entity.getComponent<Fufu::TransformComponent>();
-				auto& dstT = dup.getComponent<Fufu::TransformComponent>();
+				state.commandHistory->executeCommand<EntityCreateCommand>(activeScene, "Child Entity", entity);
 
-				dstT = srcT;
-			}
+			if (ImGui::MenuItem("Duplicate"))
+				state.commandHistory->executeCommand<EntityDuplicateCommand>(activeScene, entity);
 			
 			ImGui::Separator();
 			if (ImGui::MenuItem("Delete"))
@@ -117,7 +110,7 @@ namespace FufuStudio
 			{
 				uint32_t srcHandle = *static_cast<const uint32_t*>(payload->Data);
 				Fufu::Entity src(static_cast<entt::entity>(srcHandle), activeScene.get());
-				activeScene->setParent(src, entity);
+				state.commandHistory->executeCommand<EntityReparentCommand>(activeScene, src, entity);
 			}
 			ImGui::EndDragDropTarget();
 		}
@@ -143,8 +136,8 @@ namespace FufuStudio
 		{
 			if (state.selectedEntity == entity)
 				state.selectedEntity = Fufu::Entity{};
-			
-			activeScene->destroyEntity(entity);
+
+			state.commandHistory->executeCommand<EntityDestroyCommand>(activeScene, entity);
 		}
 	}
 
@@ -155,15 +148,12 @@ namespace FufuStudio
 		if (ImGui::BeginPopupContextWindow("HierarchyContextMenu", ImGuiPopupFlags_MouseButtonRight | ImGuiPopupFlags_NoOpenOverItems))
 		{
 			if (ImGui::MenuItem("Create Empty Entity"))
-			{
-				activeScene->createEntity("Empty Entity");
-			}
-			
+				state.commandHistory->executeCommand<EntityCreateCommand>(activeScene, "Empty Entity");
+
 			if (ImGui::MenuItem("Create Camera"))
 			{
-				auto cam = activeScene->createEntity("Camera");
-				auto& c = cam.addComponent<Fufu::CameraComponent>();
-				c.primary = false;
+				state.commandHistory->executeCommand<EntityCreateCommand>(activeScene, "Camera", Fufu::Entity{},
+					[](Fufu::Entity e) { e.addComponent<Fufu::CameraComponent>(); });
 			}
 
 			ImGui::EndPopup();

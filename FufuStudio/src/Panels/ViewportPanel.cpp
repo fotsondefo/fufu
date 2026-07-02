@@ -7,6 +7,8 @@
 #include <algorithm>
 #include <ImGuizmo.h>
 #include <glm/gtc/type_ptr.hpp>
+#include "Commands/CommandHistory.h"
+#include "Commands/ComponentCommands.h"
 
 namespace FufuStudio 
 {
@@ -42,7 +44,7 @@ namespace FufuStudio
 			state.cameraRotation.y += delta.x * state.cameraLookSpeed * deltaTime; // yaw
 			state.cameraRotation.x += delta.y * state.cameraLookSpeed * deltaTime; // pitch
 
-			// Clamp pitch pour éviter le gimbal lock
+			// Clamp pitch pour ï¿½viter le gimbal lock
 			state.cameraRotation.x = std::clamp(
 				state.cameraRotation.x,
 				glm::radians(-89.f),
@@ -56,7 +58,7 @@ namespace FufuStudio
 			m_FirstMouse = true;
 		}
 
-		// --- Déplacement WASD ---
+		// --- Dï¿½placement WASD ---
 		float pitch = state.cameraRotation.x;
 		float yaw = state.cameraRotation.y;
 
@@ -70,7 +72,7 @@ namespace FufuStudio
 
 		float speed = state.cameraMoveSpeed * deltaTime;
 
-		// Shift pour accélérer
+		// Shift pour accï¿½lï¿½rer
 		if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS) speed *= 3.f;
 
 		bool moved = false;
@@ -101,7 +103,7 @@ namespace FufuStudio
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.f, 0.f));
 		ImGui::Begin(ICON_FA_EYE " Viewport##viewport");
 
-		// Toolbar overlay en haut à gauche du viewport
+		// Toolbar overlay en haut ï¿½ gauche du viewport
 		ImGui::SetCursorPos(ImVec2(8.f, 8.f));
 		ImGui::BeginGroup();
 
@@ -131,7 +133,7 @@ namespace FufuStudio
 		state.viewportFocused = ImGui::IsWindowFocused();
 		state.viewportHovered = ImGui::IsWindowHovered();
 
-		// Détecter un redimensionnement du viewport
+		// Dï¿½tecter un redimensionnement du viewport
 		ImVec2 viewportSize = ImGui::GetContentRegionAvail();
 		if (viewportSize.x > 0 && viewportSize.y > 0)
 		{
@@ -154,7 +156,7 @@ namespace FufuStudio
 		ImGui::Image(
 			texID,
 			viewportSize,
-			ImVec2(0, 1),   // UV flip vertical — OpenGL origin bas-gauche
+			ImVec2(0, 1),   // UV flip vertical ï¿½ OpenGL origin bas-gauche
 			ImVec2(1, 0)
 		);
 
@@ -220,7 +222,7 @@ namespace FufuStudio
 		ImGuizmo::SetRect(windowPos.x, windowPos.y,
 			windowSize.x, windowSize.y);
 
-		// Matrices caméra
+		// Matrices camï¿½ra
 		auto& camTransform = cam.getComponent<Fufu::TransformComponent>();
 		auto& camComponent = cam.getComponent<Fufu::CameraComponent>();
 
@@ -228,13 +230,18 @@ namespace FufuStudio
 		float aspect = windowSize.x / windowSize.y;
 		glm::mat4 proj = camComponent.getProjectionMatrix(aspect);
 
-		// OpenGL ? ImGuizmo attend Y inversé sur la projection
+		// OpenGL ? ImGuizmo attend Y inversï¿½ sur la projection
 		proj[1][1] *= -1.f;
 
-		// Matrice de l'entité sélectionnée
+		// Matrice de l'entitï¿½ sï¿½lectionnï¿½e
 		auto& entityTransform = state.selectedEntity
 			.getComponent<Fufu::TransformComponent>();
 		glm::mat4 model = entityTransform.getTransform();
+
+		// Tant que le gizmo n'est pas en cours d'utilisation, on garde un snapshot
+		// ï¿½ jour : c'est la valeur "avant" qu'on utilisera si un drag dï¿½marre.
+		if (!m_GizmoWasUsing)
+			m_GizmoBeforeEdit = entityTransform;
 
 		ImGuizmo::OPERATION op;
 		switch (state.gizmoOperation)
@@ -263,7 +270,7 @@ namespace FufuStudio
 
 		if (manipulated)
 		{
-			// Décomposer la matrice résultante en position/rotation/scale
+			// Dï¿½composer la matrice rï¿½sultante en position/rotation/scale
 			float translation[3], rotation[3], scale[3];
 			ImGuizmo::DecomposeMatrixToComponents(
 				glm::value_ptr(model), translation, rotation, scale);
@@ -279,6 +286,15 @@ namespace FufuStudio
 
 			m_Renderer.resetAccumulation();
 		}
+
+		bool usingNow = ImGuizmo::IsUsing();
+		if (m_GizmoWasUsing && !usingNow && m_GizmoBeforeEdit.has_value())
+		{
+			state.commandHistory->executeCommand<ComponentEditCommand<Fufu::TransformComponent>>(
+				state.selectedEntity, *m_GizmoBeforeEdit, entityTransform);
+			m_GizmoBeforeEdit.reset();
+		}
+		m_GizmoWasUsing = usingNow;
 	}
 
 } // namespace FufuStudio

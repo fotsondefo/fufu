@@ -4,11 +4,13 @@
 #include <imgui.h>
 #include <glm/gtc/type_ptr.hpp>
 #include "Helpers/FontIcons.h"
+#include "Commands/CommandHistory.h"
+#include "Commands/ComponentCommands.h"
 
 namespace FufuStudio 
 {
 
-	// Helper — dessine un label aligné à gauche + widget à droite
+	// Helper ï¿½ dessine un label alignï¿½ ï¿½ gauche + widget ï¿½ droite
 	static void drawVec3Control(const char* label, glm::vec3& values, float resetValue = 0.f, float speed = 0.01f)
 	{
 		ImGui::PushID(label);
@@ -32,6 +34,29 @@ namespace FufuStudio
 
 	// ----------------------------------------------------------------
 
+	template<typename Component>
+	void InspectorPanel::trackEdit(Fufu::Entity entity, std::optional<Component>& pending, EditorState& state)
+	{
+		if (ImGui::IsItemActivated() && !pending.has_value())
+			pending = entity.getComponent<Component>();
+
+		if (ImGui::IsItemDeactivatedAfterEdit() && pending.has_value())
+		{
+			state.commandHistory->executeCommand<ComponentEditCommand<Component>>(
+				entity, *pending, entity.getComponent<Component>());
+			pending.reset();
+		}
+	}
+
+	template<typename T>
+	void InspectorPanel::drawAddComponentButton(Fufu::Entity entity, const char* label, EditorState& state)
+	{
+		if (!entity.hasComponent<T>() && ImGui::MenuItem(label))
+			state.commandHistory->executeCommand<ComponentAddCommand<T>>(entity);
+	}
+
+	// ----------------------------------------------------------------
+
 	void InspectorPanel::onImGuiRender(EditorState& state)
 	{
 		ImGui::Begin(ICON_FA_SLIDERS " Inspector##inspector");
@@ -45,20 +70,20 @@ namespace FufuStudio
 
 		Fufu::Entity entity = state.selectedEntity;
 
-		drawTag(entity);
+		drawTag(entity, state);
 		ImGui::Separator();
 
 		if (entity.hasComponent<Fufu::TransformComponent>())
 			drawTransform(entity, state);
 
 		if (entity.hasComponent<Fufu::MeshComponent>())
-			drawMesh(entity);
+			drawMesh(entity, state);
 
 		if (entity.hasComponent<Fufu::MaterialComponent>())
 			drawMaterial(entity, state);
 
 		if (entity.hasComponent<Fufu::CameraComponent>())
-			drawCamera(entity);
+			drawCamera(entity, state);
 
 		// Bouton "Add Component"
 		ImGui::Spacing();
@@ -68,17 +93,9 @@ namespace FufuStudio
 
 		if (ImGui::BeginPopup("AddComponentPopup"))
 		{
-			if (!entity.hasComponent<Fufu::MeshComponent>()
-				&& ImGui::MenuItem("Mesh"))
-				entity.addComponent<Fufu::MeshComponent>();
-
-			if (!entity.hasComponent<Fufu::MaterialComponent>()
-				&& ImGui::MenuItem("Material"))
-				entity.addComponent<Fufu::MaterialComponent>();
-
-			if (!entity.hasComponent<Fufu::CameraComponent>()
-				&& ImGui::MenuItem("Camera"))
-				entity.addComponent<Fufu::CameraComponent>();
+			drawAddComponentButton<Fufu::MeshComponent>(entity, "Mesh", state);
+			drawAddComponentButton<Fufu::MaterialComponent>(entity, "Material", state);
+			drawAddComponentButton<Fufu::CameraComponent>(entity, "Camera", state);
 
 			ImGui::EndPopup();
 		}
@@ -88,7 +105,7 @@ namespace FufuStudio
 
 	// ----------------------------------------------------------------
 
-	void InspectorPanel::drawTag(Fufu::Entity entity)
+	void InspectorPanel::drawTag(Fufu::Entity entity, EditorState& state)
 	{
 		auto& tag = entity.getComponent<Fufu::TagComponent>().tag;
 
@@ -98,6 +115,7 @@ namespace FufuStudio
 		ImGui::PushItemWidth(-1);
 		if (ImGui::InputText("##tag", buf, sizeof(buf)))
 			tag = std::string(buf);
+		trackEdit(entity, m_PendingTag, state);
 		ImGui::PopItemWidth();
 	}
 
@@ -113,10 +131,13 @@ namespace FufuStudio
 		glm::vec3 scaBefore = t.scale;
 
 		drawVec3Control("Position", t.position, 0.f, 0.05f);
+		trackEdit(entity, m_PendingTransform, state);
 		drawVec3Control("Rotation", t.rotation, 0.f, 0.01f);
+		trackEdit(entity, m_PendingTransform, state);
 		drawVec3Control("Scale", t.scale, 1.f, 0.01f);
+		trackEdit(entity, m_PendingTransform, state);
 
-		// Reset accumulation si la caméra principale a bougé
+		// Reset accumulation si la camï¿½ra principale a bougï¿½
 		bool changed = t.position != posBefore || t.rotation != rotBefore || t.scale != scaBefore;
 
 		if (changed && entity.hasComponent<Fufu::CameraComponent>() && entity.getComponent<Fufu::CameraComponent>().primary)
@@ -125,7 +146,7 @@ namespace FufuStudio
 			Fufu::Application::get().getRenderer().resetAccumulation();
 	}
 
-	void InspectorPanel::drawMesh(Fufu::Entity entity)
+	void InspectorPanel::drawMesh(Fufu::Entity entity, EditorState& state)
 	{
 		if (!ImGui::CollapsingHeader("Mesh", ImGuiTreeNodeFlags_DefaultOpen))
 			return;
@@ -145,13 +166,14 @@ namespace FufuStudio
 			mesh.meshID = 0; // invalider le cache UUID
 			Fufu::Application::get().getRenderer().resetAccumulation();
 		}
+		trackEdit(entity, m_PendingMesh, state);
 		ImGui::PopItemWidth();
 
 		ImGui::TextDisabled("UUID: %llu", mesh.meshID);
 
 		// Bouton Remove
 		if (ImGui::SmallButton("Remove##mesh"))
-			entity.removeComponent<Fufu::MeshComponent>();
+			state.commandHistory->executeCommand<ComponentRemoveCommand<Fufu::MeshComponent>>(entity);
 	}
 
 	void InspectorPanel::drawMaterial(Fufu::Entity entity, EditorState& state)
@@ -171,19 +193,23 @@ namespace FufuStudio
 			mat.albedo = glm::vec4(col[0], col[1], col[2], col[3]);
 			changed = true;
 		}
+		trackEdit(entity, m_PendingMaterial, state);
 
 		if (ImGui::SliderFloat("Metallic##mat", &mat.metallic, 0.f, 1.f)) changed = true;
+		trackEdit(entity, m_PendingMaterial, state);
 		if (ImGui::SliderFloat("Roughness##mat", &mat.roughness, 0.f, 1.f)) changed = true;
+		trackEdit(entity, m_PendingMaterial, state);
 		if (ImGui::SliderFloat("Emissive##mat", &mat.emissive, 0.f, 20.f)) changed = true;
+		trackEdit(entity, m_PendingMaterial, state);
 
 		if (changed)
 			Fufu::Application::get().getRenderer().resetAccumulation();
 
 		if (ImGui::SmallButton("Remove##mat"))
-			entity.removeComponent<Fufu::MaterialComponent>();
+			state.commandHistory->executeCommand<ComponentRemoveCommand<Fufu::MaterialComponent>>(entity);
 	}
 
-	void InspectorPanel::drawCamera(Fufu::Entity entity)
+	void InspectorPanel::drawCamera(Fufu::Entity entity, EditorState& state)
 	{
 		if (!ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_DefaultOpen))
 			return;
@@ -193,6 +219,7 @@ namespace FufuStudio
 
 		// Primary toggle
 		if (ImGui::Checkbox("Primary", &cam.primary)) changed = true;
+		trackEdit(entity, m_PendingCamera, state);
 
 		// Projection
 		int proj = static_cast<int>(cam.projection);
@@ -200,11 +227,13 @@ namespace FufuStudio
 		{
 			cam.projection = Fufu::CameraProjection::Perspective;  changed = true;
 		}
+		trackEdit(entity, m_PendingCamera, state);
 		ImGui::SameLine();
 		if (ImGui::RadioButton("Orthographic", &proj, 1))
 		{
 			cam.projection = Fufu::CameraProjection::Orthographic; changed = true;
 		}
+		trackEdit(entity, m_PendingCamera, state);
 
 		if (cam.projection == Fufu::CameraProjection::Perspective)
 		{
@@ -213,28 +242,25 @@ namespace FufuStudio
 			{
 				cam.fov = glm::radians(fovDeg); changed = true;
 			}
+			trackEdit(entity, m_PendingCamera, state);
 		}
 		else
 		{
 			if (ImGui::SliderFloat("Ortho Size", &cam.orthoSize, 0.1f, 100.f))
 				changed = true;
+			trackEdit(entity, m_PendingCamera, state);
 		}
 
 		if (ImGui::DragFloat("Near", &cam.nearPlane, 0.01f, 0.001f, 10.f))  changed = true;
+		trackEdit(entity, m_PendingCamera, state);
 		if (ImGui::DragFloat("Far", &cam.farPlane, 1.f, 1.f, 10000.f)) changed = true;
+		trackEdit(entity, m_PendingCamera, state);
 
 		if (changed)
 			Fufu::Application::get().getRenderer().resetAccumulation();
 
 		if (ImGui::SmallButton("Remove##cam"))
-			entity.removeComponent<Fufu::CameraComponent>();
-	}
-
-	template<typename T>
-	void InspectorPanel::drawAddComponentButton(Fufu::Entity entity, const char* label)
-	{
-		if (!entity.hasComponent<T>() && ImGui::MenuItem(label))
-			entity.addComponent<T>();
+			state.commandHistory->executeCommand<ComponentRemoveCommand<Fufu::CameraComponent>>(entity);
 	}
 
 }

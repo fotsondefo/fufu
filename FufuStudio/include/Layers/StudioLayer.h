@@ -2,6 +2,7 @@
 
 #include <Application/ILayer.h>
 #include "EditorState.h"
+#include "Commands/CommandHistory.h"
 #include "Panels/ViewportPanel.h"
 #include "Panels/RendererSettingsPanel.h"
 #include "Panels/HierarchyPanel.h"
@@ -30,6 +31,7 @@ namespace FufuStudio
 
 	private:
 		ImGuiContext m_ImGuiContext;
+		CommandHistory m_CommandHistory;
 		EditorState m_State;
 		ViewportPanel m_ViewportPanel;
 		RendererSettingsPanel m_RendererSettingsPanel;
