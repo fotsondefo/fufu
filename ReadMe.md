@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Hero Section](./.github/assets/editos.png)
+![Hero Section](./.github/assets/editor.png)
    
 </div>
 
