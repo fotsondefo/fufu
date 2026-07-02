@@ -26,6 +26,13 @@ namespace FufuStudio
 		ImGuiIO& io = ::ImGui::GetIO();
 		io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
+		// Par défaut, ImGui autorise à déplacer une fenêtre en cliquant-glissant
+		// n'importe où dans son corps (pas seulement la barre de titre), tant que
+		// le clic ne tombe pas sur un widget interactif. Ça entre en conflit avec
+		// les interactions du Viewport (gizmo, caméra) et de tous les autres
+		// panneaux : on restreint le déplacement à la barre de titre uniquement.
+		io.ConfigWindowsMoveFromTitleBarOnly = true;
+
 		// Point to the custom layout file
 		m_LayoutPathStr = m_LayoutPath.string();
 		io.IniFilename = m_LayoutPathStr.c_str();
