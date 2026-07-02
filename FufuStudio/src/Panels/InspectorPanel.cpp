@@ -4,8 +4,10 @@
 #include <imgui.h>
 #include <glm/gtc/type_ptr.hpp>
 #include "Helpers/FontIcons.h"
+#include "Helpers/AssetDrop.h"
 #include "Commands/CommandHistory.h"
 #include "Commands/ComponentCommands.h"
+#include <nfd.hpp>
 
 namespace FufuStudio 
 {
@@ -161,7 +163,7 @@ namespace FufuStudio
 
 		ImGui::Text("Path");
 		ImGui::SameLine();
-		ImGui::PushItemWidth(-1);
+		ImGui::PushItemWidth(-60.f);
 		if (ImGui::InputText("##meshpath", buf, sizeof(buf),
 			ImGuiInputTextFlags_EnterReturnsTrue))
 		{
@@ -170,7 +172,30 @@ namespace FufuStudio
 			Fufu::Application::get().getRenderer().resetAccumulation();
 		}
 		trackEdit(entity, m_PendingMesh, state);
+
+		if (ImGui::BeginDragDropTarget())
+		{
+			if (auto meta = acceptAssetDrop(); meta && meta->type == Fufu::AssetType::Mesh)
+				state.commandHistory->executeCommand<SetMeshCommand>(entity, meta->sourcePath.string(), meta->uuid.value());
+			ImGui::EndDragDropTarget();
+		}
 		ImGui::PopItemWidth();
+
+		ImGui::SameLine();
+		if (ImGui::SmallButton(ICON_FA_FOLDER_OPEN "##browsemesh"))
+		{
+			NFD::Guard nfdGuard;
+			NFD::UniquePath path;
+			nfdfilteritem_t filter = { "Mesh", "obj,fbx,gltf,glb,dae" };
+
+			auto& pm = Fufu::Application::get().getProjectManager();
+			std::filesystem::path defaultDir = pm.hasProject()
+				? pm.getCurrentProject().getInfo().assetsDir()
+				: std::filesystem::current_path();
+
+			if (NFD::OpenDialog(path, &filter, 1, defaultDir.string().c_str()) == NFD_OKAY)
+				state.commandHistory->executeCommand<SetMeshCommand>(entity, std::string(path.get()), uint64_t(0));
+		}
 
 		ImGui::TextDisabled("UUID: %llu", mesh.meshID);
 

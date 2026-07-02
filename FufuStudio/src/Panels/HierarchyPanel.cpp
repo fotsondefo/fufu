@@ -8,7 +8,9 @@
 #include "Commands/CommandHistory.h"
 #include "Commands/CompositeCommand.h"
 #include "Commands/EntityCommands.h"
+#include "Commands/ComponentCommands.h"
 #include "Commands/PrefabCommands.h"
+#include "Helpers/AssetDrop.h"
 
 namespace FufuStudio
 {
@@ -167,6 +169,11 @@ namespace FufuStudio
 				uint32_t srcHandle = *static_cast<const uint32_t*>(payload->Data);
 				Fufu::Entity src(static_cast<entt::entity>(srcHandle), activeScene.get());
 				state.commandHistory->executeCommand<EntityReparentCommand>(activeScene, src, entity);
+			}
+			else if (auto meta = acceptAssetDrop(); meta && meta->type == Fufu::AssetType::Mesh)
+			{
+				state.commandHistory->executeCommand<SetMeshCommand>(
+					entity, meta->sourcePath.string(), meta->uuid.value());
 			}
 			ImGui::EndDragDropTarget();
 		}

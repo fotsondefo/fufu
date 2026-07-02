@@ -2,6 +2,10 @@
 
 #include "ICommand.h"
 #include <Project/Entity.h>
+#include <Project/Components.h>
+#include <cstdint>
+#include <string>
+#include <utility>
 
 namespace FufuStudio
 {
@@ -84,5 +88,51 @@ namespace FufuStudio
 	private:
 		Fufu::Entity m_Entity;
 		Component m_Backup{};
+	};
+
+	// Définit (ajoute ou remplace) le MeshComponent d'une entité — utilisé par
+	// le drop d'un asset mesh (Viewport, Hierarchy, Inspector). Contrairement
+	// à ComponentEditCommand/ComponentAddCommand, fonctionne que l'entité ait
+	// déjà un mesh ou non, et prend des arguments (MeshComponent n'est pas
+	// juste défaut-construit).
+	class SetMeshCommand : public ICommand
+	{
+	public:
+		SetMeshCommand(Fufu::Entity entity, std::string meshPath, uint64_t meshID)
+			: m_Entity(entity), m_NewPath(std::move(meshPath)), m_NewID(meshID)
+		{
+			m_HadBefore = entity.isValid() && entity.hasComponent<Fufu::MeshComponent>();
+			if (m_HadBefore)
+				m_Before = entity.getComponent<Fufu::MeshComponent>();
+		}
+
+		void execute() override
+		{
+			if (!m_Entity.isValid()) return;
+
+			if (m_Entity.hasComponent<Fufu::MeshComponent>())
+				m_Entity.getComponent<Fufu::MeshComponent>() = Fufu::MeshComponent(m_NewPath, m_NewID);
+			else
+				m_Entity.addComponent<Fufu::MeshComponent>(m_NewPath, m_NewID);
+		}
+
+		void undo() override
+		{
+			if (!m_Entity.isValid()) return;
+
+			if (m_HadBefore)
+				m_Entity.getComponent<Fufu::MeshComponent>() = m_Before;
+			else if (m_Entity.hasComponent<Fufu::MeshComponent>())
+				m_Entity.removeComponent<Fufu::MeshComponent>();
+		}
+
+		const char* getName() const override { return "Set Mesh"; }
+
+	private:
+		Fufu::Entity m_Entity;
+		std::string m_NewPath;
+		uint64_t m_NewID;
+		bool m_HadBefore = false;
+		Fufu::MeshComponent m_Before;
 	};
 }

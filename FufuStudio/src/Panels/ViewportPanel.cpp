@@ -6,6 +6,9 @@
 #include <Project/Components.h>
 #include <algorithm>
 #include "Tools/TransformGizmoTool.h"
+#include "Helpers/AssetDrop.h"
+#include "Commands/CommandHistory.h"
+#include "Commands/EntityCommands.h"
 
 namespace FufuStudio
 {
@@ -144,6 +147,32 @@ namespace FufuStudio
 			ImVec2(0, 1),   // UV flip vertical – OpenGL origin bas-gauche
 			ImVec2(1, 0)
 		);
+
+		// Déposer un asset Mesh depuis le ProjectPanel crée une nouvelle entité
+		if (ImGui::BeginDragDropTarget())
+		{
+			if (auto meta = acceptAssetDrop(); meta && meta->type == Fufu::AssetType::Mesh)
+			{
+				auto scene = state.getActiveScene();
+				if (scene)
+				{
+					std::string path = meta->sourcePath.string();
+					uint64_t id = meta->uuid.value();
+
+					auto* cmd = state.commandHistory->executeCommand<EntityCreateCommand>(
+						scene, meta->sourcePath.stem().string(), Fufu::Entity{},
+						[path, id](Fufu::Entity e)
+						{
+							e.addComponent<Fufu::MeshComponent>(path, id);
+							e.addComponent<Fufu::MaterialComponent>();
+						});
+
+					state.selection.select(cmd->getEntity());
+					m_Renderer.resetAccumulation();
+				}
+			}
+			ImGui::EndDragDropTarget();
+		}
 
 		if (activeTool)
 		{
