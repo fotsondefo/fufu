@@ -5,13 +5,16 @@
 #include <Application/Application.h>
 #include <Project/Components.h>
 #include <algorithm>
-#include <ImGuizmo.h>
-#include <glm/gtc/type_ptr.hpp>
-#include "Commands/CommandHistory.h"
-#include "Commands/ComponentCommands.h"
+#include "Tools/TransformGizmoTool.h"
 
-namespace FufuStudio 
+namespace FufuStudio
 {
+
+	ViewportPanel::ViewportPanel(Fufu::Renderer& renderer)
+		: m_Renderer(renderer)
+	{
+		m_ToolManager.registerTool(std::make_unique<TransformGizmoTool>(m_Renderer));
+	}
 
 	void ViewportPanel::onUpdate(EditorState& state, float deltaTime)
 	{
@@ -44,7 +47,7 @@ namespace FufuStudio
 			state.cameraRotation.y += delta.x * state.cameraLookSpeed * deltaTime; // yaw
 			state.cameraRotation.x += delta.y * state.cameraLookSpeed * deltaTime; // pitch
 
-			// Clamp pitch pour �viter le gimbal lock
+			// Clamp pitch pour éviter le gimbal lock
 			state.cameraRotation.x = std::clamp(
 				state.cameraRotation.x,
 				glm::radians(-89.f),
@@ -58,7 +61,7 @@ namespace FufuStudio
 			m_FirstMouse = true;
 		}
 
-		// --- D�placement WASD ---
+		// --- Déplacement WASD ---
 		float pitch = state.cameraRotation.x;
 		float yaw = state.cameraRotation.y;
 
@@ -72,7 +75,7 @@ namespace FufuStudio
 
 		float speed = state.cameraMoveSpeed * deltaTime;
 
-		// Shift pour acc�l�rer
+		// Shift pour accélérer
 		if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS) speed *= 3.f;
 
 		bool moved = false;
@@ -103,37 +106,19 @@ namespace FufuStudio
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.f, 0.f));
 		ImGui::Begin(ICON_FA_EYE " Viewport##viewport");
 
-		// Toolbar overlay en haut � gauche du viewport
+		IEditorTool* activeTool = m_ToolManager.getActiveTool();
+
+		// Toolbar overlay en haut à gauche du viewport
 		ImGui::SetCursorPos(ImVec2(8.f, 8.f));
 		ImGui::BeginGroup();
-
-		auto opButton = [&](const char* icon, EditorState::GizmoOperation op, const char* tooltip)
-		{
-			bool active = (state.gizmoOperation == op);
-			if (active) ImGui::PushStyleColor(ImGuiCol_Button,
-				ImVec4(0.26f, 0.59f, 0.98f, 1.f));
-
-			if (ImGui::Button(icon, ImVec2(28.f, 28.f)))
-				state.gizmoOperation = op;
-
-			if (active) ImGui::PopStyleColor();
-			if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tooltip);
-			ImGui::SameLine();
-		};
-
-		opButton(ICON_CI_ARROW_BOTH,
-			EditorState::GizmoOperation::Translate, "Translate (W)");
-		opButton(ICON_CI_ARROW_CIRCLE_UP,
-			EditorState::GizmoOperation::Rotate, "Rotate (E)");
-		opButton(ICON_FA_EXPAND,
-			EditorState::GizmoOperation::Scale, "Scale (R)");
-
+		if (activeTool)
+			activeTool->onToolbar(state);
 		ImGui::EndGroup();
 
 		state.viewportFocused = ImGui::IsWindowFocused();
 		state.viewportHovered = ImGui::IsWindowHovered();
 
-		// D�tecter un redimensionnement du viewport
+		// Détecter un redimensionnement du viewport
 		ImVec2 viewportSize = ImGui::GetContentRegionAvail();
 		if (viewportSize.x > 0 && viewportSize.y > 0)
 		{
@@ -156,12 +141,15 @@ namespace FufuStudio
 		ImGui::Image(
 			texID,
 			viewportSize,
-			ImVec2(0, 1),   // UV flip vertical � OpenGL origin bas-gauche
+			ImVec2(0, 1),   // UV flip vertical – OpenGL origin bas-gauche
 			ImVec2(1, 0)
 		);
 
-		drawGizmo(state);
-		handleGizmoShortcuts(state);
+		if (activeTool)
+		{
+			activeTool->onViewportOverlay(state);
+			activeTool->onShortcuts(state);
+		}
 
 		// Overlay : infos accumulation
 		if (m_Renderer.getSettings().mode == Fufu::RenderMode::Accumulation)
@@ -177,124 +165,6 @@ namespace FufuStudio
 
 		ImGui::End();
 		ImGui::PopStyleVar();
-	}
-
-	void ViewportPanel::handleGizmoShortcuts(EditorState& state)
-	{
-		if (!state.viewportFocused || !state.viewportHovered) return;
-		if (ImGuizmo::IsUsing()) return; // ne pas changer de mode pendant manipulation
-
-		if (ImGui::IsKeyPressed(ImGuiKey_W))
-			state.gizmoOperation = EditorState::GizmoOperation::Translate;
-		if (ImGui::IsKeyPressed(ImGuiKey_E))
-			state.gizmoOperation = EditorState::GizmoOperation::Rotate;
-		if (ImGui::IsKeyPressed(ImGuiKey_R))
-			state.gizmoOperation = EditorState::GizmoOperation::Scale;
-
-		// Tab pour basculer World/Local
-		if (ImGui::IsKeyPressed(ImGuiKey_Tab))
-		{
-			state.gizmoSpace = (state.gizmoSpace == EditorState::GizmoSpace::World)
-				? EditorState::GizmoSpace::Local
-				: EditorState::GizmoSpace::World;
-		}
-	}
-
-	void ViewportPanel::drawGizmo(EditorState& state)
-	{
-		if (!state.selectedEntity || !state.selectedEntity.isValid())
-			return;
-
-		if (!state.selectedEntity.hasComponent<Fufu::TransformComponent>())
-			return;
-
-		auto scene = state.getActiveScene();
-		if (!scene) return;
-
-		Fufu::Entity cam = scene->getPrimaryCamera();
-		if (!cam) return;
-
-		ImGuizmo::SetOrthographic(false);
-		ImGuizmo::SetDrawlist();
-
-		ImVec2 windowPos = ImGui::GetWindowPos();
-		ImVec2 windowSize = ImGui::GetWindowSize();
-		ImGuizmo::SetRect(windowPos.x, windowPos.y,
-			windowSize.x, windowSize.y);
-
-		// Matrices cam�ra
-		auto& camTransform = cam.getComponent<Fufu::TransformComponent>();
-		auto& camComponent = cam.getComponent<Fufu::CameraComponent>();
-
-		glm::mat4 view = glm::inverse(camTransform.getTransform());
-		float aspect = windowSize.x / windowSize.y;
-		glm::mat4 proj = camComponent.getProjectionMatrix(aspect);
-
-		// OpenGL ? ImGuizmo attend Y invers� sur la projection
-		proj[1][1] *= -1.f;
-
-		// Matrice de l'entit� s�lectionn�e
-		auto& entityTransform = state.selectedEntity
-			.getComponent<Fufu::TransformComponent>();
-		glm::mat4 model = entityTransform.getTransform();
-
-		// Tant que le gizmo n'est pas en cours d'utilisation, on garde un snapshot
-		// � jour : c'est la valeur "avant" qu'on utilisera si un drag d�marre.
-		if (!m_GizmoWasUsing)
-			m_GizmoBeforeEdit = entityTransform;
-
-		ImGuizmo::OPERATION op;
-		switch (state.gizmoOperation)
-		{
-		case EditorState::GizmoOperation::Translate:
-			op = ImGuizmo::TRANSLATE; break;
-		case EditorState::GizmoOperation::Rotate:
-			op = ImGuizmo::ROTATE; break;
-		case EditorState::GizmoOperation::Scale:
-			op = ImGuizmo::SCALE; break;
-		}
-
-		ImGuizmo::MODE mode = (state.gizmoSpace == EditorState::GizmoSpace::World)
-			? ImGuizmo::WORLD : ImGuizmo::LOCAL;
-
-		// Scale ne supporte que LOCAL dans ImGuizmo
-		if (op == ImGuizmo::SCALE)
-			mode = ImGuizmo::LOCAL;
-
-		bool manipulated = ImGuizmo::Manipulate(
-			glm::value_ptr(view),
-			glm::value_ptr(proj),
-			op, mode,
-			glm::value_ptr(model)
-		);
-
-		if (manipulated)
-		{
-			// D�composer la matrice r�sultante en position/rotation/scale
-			float translation[3], rotation[3], scale[3];
-			ImGuizmo::DecomposeMatrixToComponents(
-				glm::value_ptr(model), translation, rotation, scale);
-
-			entityTransform.position = glm::vec3(
-				translation[0], translation[1], translation[2]);
-			entityTransform.rotation = glm::vec3(
-				glm::radians(rotation[0]),
-				glm::radians(rotation[1]),
-				glm::radians(rotation[2]));
-			entityTransform.scale = glm::vec3(
-				scale[0], scale[1], scale[2]);
-
-			m_Renderer.resetAccumulation();
-		}
-
-		bool usingNow = ImGuizmo::IsUsing();
-		if (m_GizmoWasUsing && !usingNow && m_GizmoBeforeEdit.has_value())
-		{
-			state.commandHistory->executeCommand<ComponentEditCommand<Fufu::TransformComponent>>(
-				state.selectedEntity, *m_GizmoBeforeEdit, entityTransform);
-			m_GizmoBeforeEdit.reset();
-		}
-		m_GizmoWasUsing = usingNow;
 	}
 
 } // namespace FufuStudio
