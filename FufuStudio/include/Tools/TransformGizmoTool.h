@@ -75,23 +75,28 @@ namespace FufuStudio
 			Fufu::Entity cam = scene->getPrimaryCamera();
 			if (!cam) return;
 
+			ImGuizmo::BeginFrame();
 			ImGuizmo::SetOrthographic(false);
 			ImGuizmo::SetDrawlist();
 
-			ImVec2 windowPos = ImGui::GetWindowPos();
-			ImVec2 windowSize = ImGui::GetWindowSize();
-			ImGuizmo::SetRect(windowPos.x, windowPos.y, windowSize.x, windowSize.y);
+			// Zone de la vraie IMAGE rendue (pas la fenêtre du panneau, qui
+			// inclut sa propre barre de titre) : sinon le gizmo se désynchronise
+			// visuellement de ce qui est affiché.
+			ImVec2 imagePos = ImVec2(state.viewportPos.x, state.viewportPos.y);
+			ImVec2 imageSize = ImVec2(state.viewportSize.x, state.viewportSize.y);
+			ImGuizmo::SetRect(imagePos.x, imagePos.y, imageSize.x, imageSize.y);
 
 			// Matrices caméra
 			auto& camTransform = cam.getComponent<Fufu::TransformComponent>();
 			auto& camComponent = cam.getComponent<Fufu::CameraComponent>();
 
 			glm::mat4 view = glm::inverse(camTransform.getTransform());
-			float aspect = windowSize.x / windowSize.y;
+			float aspect = imageSize.x / imageSize.y;
 			glm::mat4 proj = camComponent.getProjectionMatrix(aspect);
-
-			// OpenGL → ImGuizmo attend Y inversé sur la projection
-			proj[1][1] *= -1.f;
+			// Pas de flip Y ici : l'orientation verticale est déjà corrigée au
+			// niveau de l'affichage de la texture (UV inversé dans ImGui::Image,
+			// voir ViewportPanel). Appliquer un flip ici en plus désynchronise
+			// la position projetée du gizmo par rapport à l'objet réellement affiché.
 
 			// Le gizmo se positionne sur l'entité "primaire" (pivot du groupe).
 			auto& primaryTransform = primary.getComponent<Fufu::TransformComponent>();

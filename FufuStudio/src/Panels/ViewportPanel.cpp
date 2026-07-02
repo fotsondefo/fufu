@@ -6,6 +6,7 @@
 #include <Project/Components.h>
 #include <algorithm>
 #include "Tools/TransformGizmoTool.h"
+#include "Tools/ModelingTool.h"
 #include "Helpers/AssetDrop.h"
 #include "Commands/CommandHistory.h"
 #include "Commands/EntityCommands.h"
@@ -15,8 +16,10 @@ namespace FufuStudio
 
 	ViewportPanel::ViewportPanel(Fufu::Renderer& renderer)
 		: m_Renderer(renderer)
+		, m_OrientationGizmo(renderer)
 	{
 		m_ToolManager.registerTool(std::make_unique<TransformGizmoTool>(m_Renderer));
+		m_ToolManager.registerTool(std::make_unique<ModelingTool>());
 	}
 
 	void ViewportPanel::onUpdate(EditorState& state, float deltaTime)
@@ -47,8 +50,10 @@ namespace FufuStudio
 			glm::vec2 delta = mousePos - m_LastMousePos;
 			m_LastMousePos = mousePos;
 
-			state.cameraRotation.y += delta.x * state.cameraLookSpeed * deltaTime; // yaw
-			state.cameraRotation.x += delta.y * state.cameraLookSpeed * deltaTime; // pitch
+			// Signe cohérent avec le forward dérivé du quaternion (voir plus bas) :
+			// souris à droite/haut doit tourner la vue à droite/vers le haut.
+			state.cameraRotation.y -= delta.x * state.cameraLookSpeed * deltaTime; // yaw
+			state.cameraRotation.x -= delta.y * state.cameraLookSpeed * deltaTime; // pitch
 
 			// Clamp pitch pour éviter le gimbal lock
 			state.cameraRotation.x = std::clamp(
@@ -65,15 +70,15 @@ namespace FufuStudio
 		}
 
 		// --- Déplacement WASD ---
+		// Dérivé du même quaternion que TransformComponent::getTransform()
+		// (utilisé par le rendu et le gizmo), pour que le déplacement corresponde
+		// toujours à ce qui est effectivement affiché à l'écran.
 		float pitch = state.cameraRotation.x;
 		float yaw = state.cameraRotation.y;
 
-		glm::vec3 forward = glm::normalize(glm::vec3(
-			glm::cos(pitch) * glm::sin(yaw),
-			-glm::sin(pitch),
-			glm::cos(pitch) * glm::cos(yaw)
-		));
-		glm::vec3 right = glm::normalize(glm::cross(forward, glm::vec3(0.f, 1.f, 0.f)));
+		glm::quat camRotation = glm::quat(glm::vec3(pitch, yaw, 0.f));
+		glm::vec3 forward = glm::normalize(camRotation * glm::vec3(0.f, 0.f, -1.f));
+		glm::vec3 right = glm::normalize(camRotation * glm::vec3(1.f, 0.f, 0.f));
 		glm::vec3 up = glm::vec3(0.f, 1.f, 0.f);
 
 		float speed = state.cameraMoveSpeed * deltaTime;
@@ -111,13 +116,6 @@ namespace FufuStudio
 
 		IEditorTool* activeTool = m_ToolManager.getActiveTool();
 
-		// Toolbar overlay en haut à gauche du viewport
-		ImGui::SetCursorPos(ImVec2(8.f, 8.f));
-		ImGui::BeginGroup();
-		if (activeTool)
-			activeTool->onToolbar(state);
-		ImGui::EndGroup();
-
 		state.viewportFocused = ImGui::IsWindowFocused();
 		state.viewportHovered = ImGui::IsWindowHovered();
 
@@ -137,6 +135,7 @@ namespace FufuStudio
 		}
 
 		ImVec2 imagePos = ImGui::GetCursorScreenPos();
+		state.viewportPos = { imagePos.x, imagePos.y };
 
 		ImTextureID texID = reinterpret_cast<ImTextureID>(
 			static_cast<uintptr_t>(m_Renderer.getOutputTextureID())
@@ -147,6 +146,33 @@ namespace FufuStudio
 			ImVec2(0, 1),   // UV flip vertical – OpenGL origin bas-gauche
 			ImVec2(1, 0)
 		);
+
+		// Barres d'outils flottantes, dessinées PAR-DESSUS l'image (après elle
+		// dans l'ordre d'appel = au-dessus dans l'ordre de rendu ImGui) via des
+		// positions écran absolues : elles ne réservent aucun espace de layout,
+		// l'image garde toute la taille du panneau.
+		ImGui::SetCursorScreenPos(ImVec2(imagePos.x + 8.f, imagePos.y + 8.f));
+		ImGui::BeginGroup();
+		const auto& tools = m_ToolManager.getTools();
+		for (std::size_t i = 0; i < tools.size(); ++i)
+		{
+			bool active = (activeTool == tools[i].get());
+			if (active) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.26f, 0.59f, 0.98f, 1.f));
+			if (ImGui::Button(tools[i]->getName()))
+			{
+				m_ToolManager.setActiveTool(i);
+				activeTool = m_ToolManager.getActiveTool();
+			}
+			if (active) ImGui::PopStyleColor();
+			ImGui::SameLine();
+		}
+		ImGui::EndGroup();
+
+		ImGui::SetCursorScreenPos(ImVec2(imagePos.x + 8.f, imagePos.y + 42.f));
+		ImGui::BeginGroup();
+		if (activeTool)
+			activeTool->onToolbar(state);
+		ImGui::EndGroup();
 
 		// Déposer un asset Mesh depuis le ProjectPanel crée une nouvelle entité
 		if (ImGui::BeginDragDropTarget())
@@ -180,17 +206,18 @@ namespace FufuStudio
 			activeTool->onShortcuts(state);
 		}
 
-		// Overlay : infos accumulation
+		// Overlay : infos accumulation, sous les barres d'outils
 		if (m_Renderer.getSettings().mode == Fufu::RenderMode::Accumulation)
 		{
-			ImVec2 overlayPos = ImGui::GetWindowPos();
-			overlayPos.x += 8.f;
-			overlayPos.y += 8.f;
+			ImVec2 overlayPos = ImVec2(imagePos.x + 8.f, imagePos.y + 76.f);
 			ImGui::GetWindowDrawList()->AddText(
 				overlayPos, IM_COL32(255, 255, 255, 200),
 				("Samples: " + std::to_string(m_Renderer.getAccumulatedFrames())).c_str()
 			);
 		}
+
+		m_OrientationGizmo.render(state);
+		m_OrientationGizmo.handleShortcuts(state);
 
 		ImGui::End();
 		ImGui::PopStyleVar();

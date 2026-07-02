@@ -23,6 +23,11 @@ namespace FufuStudio
 		float     cameraLookSpeed = 0.1f;
 
 		// Viewport
+		// viewportPos = coin haut-gauche de l'IMAGE rendue en coordonnées écran
+		// (pas la fenêtre ImGui du panneau, qui inclut sa propre barre de titre).
+		// Les outils (gizmo, pick de face...) doivent l'utiliser pour que leur
+		// projection reste alignée avec ce qui est réellement affiché.
+		glm::vec2 viewportPos = { 0.f, 0.f };
 		glm::vec2 viewportSize = { 1280.f, 720.f };
 		bool      viewportFocused = false;
 		bool      viewportHovered = false;

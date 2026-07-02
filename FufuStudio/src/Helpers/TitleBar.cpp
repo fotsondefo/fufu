@@ -245,7 +245,8 @@ namespace FufuStudio
 		{
 			if (ImGui::MenuItem(ICON_FA_COLUMNS " Reset Layout"))
 			{
-				//...
+				if (state.imGuiContext)
+					state.imGuiContext->resetLayoutToDefault();
 			}
 
 			ImGui::EndPopup();

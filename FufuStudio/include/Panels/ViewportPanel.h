@@ -3,6 +3,7 @@
 #include "IEditorPanel.h"
 #include <Renderer/Renderer.h>
 #include "Tools/ToolManager.h"
+#include "Helpers/OrientationGizmo.h"
 
 namespace FufuStudio
 {
@@ -22,6 +23,7 @@ namespace FufuStudio
 	private:
 		Fufu::Renderer& m_Renderer;
 		ToolManager m_ToolManager;
+		OrientationGizmo m_OrientationGizmo;
 
 		// Tracking souris pour le mode FPS
 		glm::vec2 m_LastMousePos = { 0.f, 0.f };

@@ -118,6 +118,10 @@ namespace FufuStudio
 
 	void ImGuiContext::applyDefaultLayout()
 	{
+		// Toutes les fenêtres commencent à Y >= 40 (TitleBar::k_Height) : la barre
+		// de titre custom de l'appli occupe les 40 premiers pixels en haut de
+		// l'écran et est dessinée par-dessus tout le reste — un panneau qui
+		// chevauche cette bande s'y retrouve partiellement caché.
 		static const char* k_DefaultLayout = R"(
 [Window][MainWindow]
 Pos=0,0
@@ -125,23 +129,23 @@ Size=1280,720
 Collapsed=0
 
 [Window][Viewport]
-Pos=0,20
-Size=860,700
+Pos=0,40
+Size=860,680
 Collapsed=0
 
 [Window][Hierarchy]
-Pos=862,20
+Pos=862,40
 Size=418,340
 Collapsed=0
 
 [Window][Inspector]
-Pos=862,362
+Pos=862,382
 Size=418,220
 Collapsed=0
 
 [Window][Renderer Settings]
-Pos=862,584
-Size=418,136
+Pos=862,604
+Size=418,116
 Collapsed=0
 )";
 
