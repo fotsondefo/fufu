@@ -4,13 +4,11 @@
 #include "EditorState.h"
 #include "Commands/CommandHistory.h"
 #include "Commands/ExtrudeFaceCommand.h"
+#include "Helpers/MeshPicking.h"
 #include <Project/Components.h>
-#include <Project/Assets/MeshAsset.h>
-#include <Application/Application.h>
 #include <imgui.h>
 #include <glm/glm.hpp>
 #include <optional>
-#include <limits>
 
 namespace FufuStudio
 {
@@ -58,18 +56,16 @@ namespace FufuStudio
 			Fufu::Entity cam = scene->getPrimaryCamera();
 			if (!cam) return;
 
-			// Zone de la vraie IMAGE rendue (pas la fenêtre du panneau, qui
-			// inclut sa propre barre de titre) : sinon le pick vise à côté.
-			ImVec2 windowPos = ImVec2(state.viewportPos.x, state.viewportPos.y);
-			ImVec2 windowSize = ImVec2(state.viewportSize.x, state.viewportSize.y);
+			ImVec2 imagePos = ImVec2(state.viewportPos.x, state.viewportPos.y);
+			ImVec2 imageSize = ImVec2(state.viewportSize.x, state.viewportSize.y);
 
 			auto& camTransform = cam.getComponent<Fufu::TransformComponent>();
 			auto& camComponent = cam.getComponent<Fufu::CameraComponent>();
 			glm::mat4 view = glm::inverse(camTransform.getTransform());
-			float aspect = windowSize.x / windowSize.y;
+			float aspect = imageSize.x / imageSize.y;
 			glm::mat4 viewProj = camComponent.getProjectionMatrix(aspect) * view;
 
-			auto meshAsset = getMeshAsset(entity);
+			auto meshAsset = getMeshAssetForEntity(entity);
 			if (!meshAsset || meshAsset->getSubMeshCount() == 0)
 				return;
 
@@ -81,12 +77,15 @@ namespace FufuStudio
 			{
 				ImVec2 mouse = ImGui::GetMousePos();
 				glm::vec2 uv = {
-					(mouse.x - windowPos.x) / windowSize.x,
-					(mouse.y - windowPos.y) / windowSize.y
+					(mouse.x - imagePos.x) / imageSize.x,
+					(mouse.y - imagePos.y) / imageSize.y
 				};
 
 				if (uv.x >= 0.f && uv.x <= 1.f && uv.y >= 0.f && uv.y <= 1.f)
-					m_SelectedFace = pickFace(mesh, model, viewProj, uv);
+				{
+					MeshPickResult pick = pickMesh(mesh, model, viewProj, uv);
+					m_SelectedFace = pick.hit ? std::optional<std::size_t>(pick.faceIndex) : std::nullopt;
+				}
 			}
 
 			// Surbrillance de la face sélectionnée
@@ -103,7 +102,7 @@ namespace FufuStudio
 						glm::vec3 worldPos = glm::vec3(model * glm::vec4(
 							mesh.vertices[mesh.indices[i0 + static_cast<std::size_t>(i)]].position, 1.f));
 
-						auto screen = worldToScreen(worldPos, viewProj, windowPos, windowSize);
+						auto screen = worldToScreen(worldPos, viewProj, imagePos, imageSize);
 						if (!screen) { visible = false; break; }
 						screenPts[i] = *screen;
 					}
@@ -119,72 +118,6 @@ namespace FufuStudio
 		}
 
 	private:
-		static std::optional<ImVec2> worldToScreen(const glm::vec3& worldPos, const glm::mat4& viewProj,
-			ImVec2 windowPos, ImVec2 windowSize)
-		{
-			glm::vec4 clip = viewProj * glm::vec4(worldPos, 1.f);
-			if (clip.w <= 0.f) return std::nullopt;
-
-			glm::vec2 ndc = glm::vec2(clip) / clip.w;
-			return ImVec2(
-				windowPos.x + (ndc.x * 0.5f + 0.5f) * windowSize.x,
-				windowPos.y + (1.f - (ndc.y * 0.5f + 0.5f)) * windowSize.y
-			);
-		}
-
-		// Pick approximatif en espace écran : projette chaque triangle, teste
-		// l'appartenance barycentrique au point cliqué, garde le plus proche
-		// (clip.w comme proxy de profondeur). Pas de vrai lancer de rayon 3D
-		// nécessaire pour un usage éditeur sur des maillages de cette taille.
-		static std::optional<std::size_t> pickFace(const Fufu::SubMesh& mesh, const glm::mat4& model,
-			const glm::mat4& viewProj, glm::vec2 uv)
-		{
-			glm::vec2 ndcClick = { uv.x * 2.f - 1.f, 1.f - uv.y * 2.f };
-
-			std::optional<std::size_t> best;
-			float bestDepth = std::numeric_limits<float>::max();
-
-			for (std::size_t i = 0; i + 2 < mesh.indices.size(); i += 3)
-			{
-				glm::vec4 clipA = viewProj * model * glm::vec4(mesh.vertices[mesh.indices[i]].position, 1.f);
-				glm::vec4 clipB = viewProj * model * glm::vec4(mesh.vertices[mesh.indices[i + 1]].position, 1.f);
-				glm::vec4 clipC = viewProj * model * glm::vec4(mesh.vertices[mesh.indices[i + 2]].position, 1.f);
-
-				if (clipA.w <= 0.f || clipB.w <= 0.f || clipC.w <= 0.f)
-					continue;
-
-				glm::vec2 ndcA = glm::vec2(clipA) / clipA.w;
-				glm::vec2 ndcB = glm::vec2(clipB) / clipB.w;
-				glm::vec2 ndcC = glm::vec2(clipC) / clipC.w;
-
-				float denom = (ndcB.y - ndcC.y) * (ndcA.x - ndcC.x) + (ndcC.x - ndcB.x) * (ndcA.y - ndcC.y);
-				if (glm::abs(denom) < 1e-8f) continue;
-
-				float w0 = ((ndcB.y - ndcC.y) * (ndcClick.x - ndcC.x) + (ndcC.x - ndcB.x) * (ndcClick.y - ndcC.y)) / denom;
-				float w1 = ((ndcC.y - ndcA.y) * (ndcClick.x - ndcC.x) + (ndcA.x - ndcC.x) * (ndcClick.y - ndcC.y)) / denom;
-				float w2 = 1.f - w0 - w1;
-
-				if (w0 < 0.f || w1 < 0.f || w2 < 0.f) continue;
-
-				float depth = w0 * clipA.w + w1 * clipB.w + w2 * clipC.w;
-				if (depth < bestDepth)
-				{
-					bestDepth = depth;
-					best = i / 3;
-				}
-			}
-
-			return best;
-		}
-
-		static std::shared_ptr<Fufu::MeshAsset> getMeshAsset(Fufu::Entity entity)
-		{
-			auto& mesh = entity.getComponent<Fufu::MeshComponent>();
-			auto& pm = Fufu::Application::get().getProjectManager();
-			if (!pm.hasProject()) return nullptr;
-			return pm.getCurrentProject().getAssetManager().getMesh(mesh.meshPath);
-		}
-
 		void extrude(EditorState& state, Fufu::Entity entity)
 		{
 			if (!m_SelectedFace.has_value() || !entity || !entity.isValid())

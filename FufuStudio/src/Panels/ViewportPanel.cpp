@@ -7,6 +7,7 @@
 #include <algorithm>
 #include "Tools/TransformGizmoTool.h"
 #include "Tools/ModelingTool.h"
+#include "Tools/SculptTool.h"
 #include "Helpers/AssetDrop.h"
 #include "Commands/CommandHistory.h"
 #include "Commands/EntityCommands.h"
@@ -20,6 +21,7 @@ namespace FufuStudio
 	{
 		m_ToolManager.registerTool(std::make_unique<TransformGizmoTool>(m_Renderer));
 		m_ToolManager.registerTool(std::make_unique<ModelingTool>());
+		m_ToolManager.registerTool(std::make_unique<SculptTool>(m_Renderer));
 	}
 
 	void ViewportPanel::onUpdate(EditorState& state, float deltaTime)
