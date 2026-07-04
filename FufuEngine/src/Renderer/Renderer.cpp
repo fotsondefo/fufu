@@ -3,6 +3,7 @@
 #include "Renderer/Renderer.h"
 #include "Project/Components.h"
 #include "Project/Assets/AssetManager.h"
+#include "Renderer/GroomGenerator.h"
 #include "Application/Application.h"
 
 namespace Fufu 
@@ -448,6 +449,36 @@ void main() {
 					m_Triangles.push_back(tri);
 				}
 			}
+		}
+		);
+
+		// Groom : entités ayant un Mesh (surface porteuse) ET un Groom.
+		// Génère les hair cards directement dans le même buffer de triangles —
+		// pas de shader ni de passe de rendu séparés.
+		scene.each<TransformComponent, MeshComponent, GroomComponent>(
+			[&](entt::entity /*e*/,
+				TransformComponent& transform,
+				MeshComponent& meshComp,
+				GroomComponent& groom)
+		{
+			auto& am = Fufu::Application::get().getProjectManager().getCurrentProject().getAssetManager();
+			auto meshAsset = am.getMesh(meshComp.meshPath);
+			if (!meshAsset) return;
+
+			int matIdx = static_cast<int>(m_Materials.size());
+			GPUMaterial gpuMat;
+			gpuMat.albedo = groom.color;
+			gpuMat.metallic = 0.f;
+			gpuMat.roughness = 0.9f;
+			gpuMat.emissive = 0.f;
+			gpuMat.ior = 1.4f;
+			gpuMat.albedoTexIdx = -1;
+			m_Materials.push_back(gpuMat);
+
+			glm::mat4 model = transform.getTransform();
+			glm::mat3 normalMat = glm::transpose(glm::inverse(glm::mat3(model)));
+
+			GroomGenerator::generate(*meshAsset, groom, model, normalMat, matIdx, m_Triangles);
 		}
 		);
 

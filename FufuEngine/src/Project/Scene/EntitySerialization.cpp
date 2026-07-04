@@ -102,6 +102,21 @@ namespace Fufu
 		if (reg.all_of<PrefabInstanceComponent>(handle))
 			j["prefabInstance"] = reg.get<PrefabInstanceComponent>(handle).prefabPath;
 
+		if (reg.all_of<GroomComponent>(handle))
+		{
+			auto& g = reg.get<GroomComponent>(handle);
+			j["groom"] = {
+				{ "strandCount", g.strandCount },
+				{ "segments",    g.segments    },
+				{ "length",      g.length      },
+				{ "thickness",   g.thickness   },
+				{ "gravity",     g.gravity     },
+				{ "randomness",  g.randomness  },
+				{ "seed",        g.seed        },
+				{ "color",       serializeVec4(g.color) }
+			};
+		}
+
 		return j;
 	}
 
@@ -155,6 +170,21 @@ namespace Fufu
 
 		if (j.contains("prefabInstance"))
 			entity.addComponent<PrefabInstanceComponent>(j["prefabInstance"].get<std::string>());
+
+		if (j.contains("groom"))
+		{
+			GroomComponent g;
+			g.strandCount = j["groom"].value("strandCount", 200);
+			g.segments = j["groom"].value("segments", 3);
+			g.length = j["groom"].value("length", 0.3f);
+			g.thickness = j["groom"].value("thickness", 0.01f);
+			g.gravity = j["groom"].value("gravity", 0.3f);
+			g.randomness = j["groom"].value("randomness", 0.3f);
+			g.seed = j["groom"].value("seed", uint32_t(1));
+			if (j["groom"].contains("color"))
+				g.color = deserializeVec4(j["groom"]["color"]);
+			entity.addComponent<GroomComponent>(g);
+		}
 
 		return entity;
 	}

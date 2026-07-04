@@ -60,6 +60,25 @@ namespace Fufu
 		uint64_t    meshID = 0; // UUID resolved by the AssetManager
 	};
 
+	// --------------------------------------------------------------- Groom
+	// Génération procédurale de "hair cards" (rubans en triangles, pas de
+	// vraies mèches courbes rendues individuellement) à partir de la surface
+	// du MeshComponent de la MÊME entité — une entité avec Groom mais sans
+	// Mesh ne produit rien. Voir Renderer::uploadSceneData / GroomGenerator
+	// pour le pipeline de rendu dédié (les triangles générés sont injectés
+	// directement dans le buffer GPU, pas de fichier .obj intermédiaire).
+	struct GroomComponent
+	{
+		int      strandCount = 200;  // Nombre de mèches
+		int      segments = 3;       // Segments par mèche (souplesse de la courbe)
+		float    length = 0.3f;      // Longueur d'une mèche
+		float    thickness = 0.01f;  // Largeur du ruban à la racine
+		float    gravity = 0.3f;     // Courbure vers le bas le long de la mèche
+		float    randomness = 0.3f;  // Variation longueur/direction par mèche
+		uint32_t seed = 1;           // Graine du PRNG (reproductible)
+		glm::vec4 color = { 0.25f, 0.15f, 0.1f, 1.f };
+	};
+
 	// ------------------------------------------------------------- Material
 	struct MaterialComponent
 	{

@@ -90,6 +90,9 @@ namespace FufuStudio
 		if (entity.hasComponent<Fufu::CameraComponent>())
 			drawCamera(entity, state);
 
+		if (entity.hasComponent<Fufu::GroomComponent>())
+			drawGroom(entity, state);
+
 		// Bouton "Add Component"
 		ImGui::Spacing();
 		ImGui::Separator();
@@ -101,6 +104,10 @@ namespace FufuStudio
 			drawAddComponentButton<Fufu::MeshComponent>(entity, "Mesh", state);
 			drawAddComponentButton<Fufu::MaterialComponent>(entity, "Material", state);
 			drawAddComponentButton<Fufu::CameraComponent>(entity, "Camera", state);
+
+			// Groom a besoin d'un Mesh (surface porteuse) pour produire quoi que ce soit
+			if (entity.hasComponent<Fufu::MeshComponent>())
+				drawAddComponentButton<Fufu::GroomComponent>(entity, "Groom", state);
 
 			ImGui::EndPopup();
 		}
@@ -289,6 +296,55 @@ namespace FufuStudio
 
 		if (ImGui::SmallButton("Remove##cam"))
 			state.commandHistory->executeCommand<ComponentRemoveCommand<Fufu::CameraComponent>>(entity);
+	}
+
+	void InspectorPanel::drawGroom(Fufu::Entity entity, EditorState& state)
+	{
+		if (!ImGui::CollapsingHeader("Groom", ImGuiTreeNodeFlags_DefaultOpen))
+			return;
+
+		if (!entity.hasComponent<Fufu::MeshComponent>())
+			ImGui::TextColored(ImVec4(0.9f, 0.6f, 0.2f, 1.f), "Needs a Mesh component to grow hair from.");
+
+		auto& groom = entity.getComponent<Fufu::GroomComponent>();
+		bool changed = false;
+
+		ImGui::Text("Color");
+		ImGui::SameLine();
+		float col[4] = { groom.color.r, groom.color.g, groom.color.b, groom.color.a };
+		if (ImGui::ColorEdit4("##groomcolor", col))
+		{
+			groom.color = glm::vec4(col[0], col[1], col[2], col[3]);
+			changed = true;
+		}
+		trackEdit(entity, m_PendingGroom, state);
+
+		if (ImGui::DragInt("Strands", &groom.strandCount, 4.f, 0, 20000)) changed = true;
+		trackEdit(entity, m_PendingGroom, state);
+		if (ImGui::DragInt("Segments", &groom.segments, 0.1f, 1, 12)) changed = true;
+		trackEdit(entity, m_PendingGroom, state);
+		if (ImGui::DragFloat("Length", &groom.length, 0.005f, 0.01f, 5.f)) changed = true;
+		trackEdit(entity, m_PendingGroom, state);
+		if (ImGui::DragFloat("Thickness", &groom.thickness, 0.001f, 0.001f, 0.5f)) changed = true;
+		trackEdit(entity, m_PendingGroom, state);
+		if (ImGui::DragFloat("Gravity", &groom.gravity, 0.005f, -2.f, 2.f)) changed = true;
+		trackEdit(entity, m_PendingGroom, state);
+		if (ImGui::DragFloat("Randomness", &groom.randomness, 0.005f, 0.f, 1.f)) changed = true;
+		trackEdit(entity, m_PendingGroom, state);
+
+		int seed = static_cast<int>(groom.seed);
+		if (ImGui::DragInt("Seed", &seed, 1.f, 0, 1000000))
+		{
+			groom.seed = static_cast<uint32_t>(seed < 0 ? 0 : seed);
+			changed = true;
+		}
+		trackEdit(entity, m_PendingGroom, state);
+
+		if (changed)
+			Fufu::Application::get().getRenderer().resetAccumulation();
+
+		if (ImGui::SmallButton("Remove##groom"))
+			state.commandHistory->executeCommand<ComponentRemoveCommand<Fufu::GroomComponent>>(entity);
 	}
 
 }
