@@ -114,6 +114,7 @@ namespace FufuStudio
 				auto& subMesh = meshAsset->getSubMeshesMutable()[0];
 				applyBrush(subMesh, model, pick.worldPosition);
 				Fufu::MeshUtils::recomputeNormals(subMesh);
+				meshAsset->invalidateLODs(); // LOD0 change à chaque frame de drag
 				m_Renderer.resetAccumulation();
 			}
 

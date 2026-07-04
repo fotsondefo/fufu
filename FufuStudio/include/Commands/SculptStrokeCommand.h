@@ -37,6 +37,7 @@ namespace FufuStudio
 			if (m_SubMeshIndex >= subMeshes.size()) return;
 
 			subMeshes[m_SubMeshIndex] = mesh;
+			asset->invalidateLODs(); // LOD0 a changé, les LOD générés sont obsolètes
 			Fufu::MeshExporter::writeObj(m_MeshPath, mesh);
 			Fufu::Application::get().getRenderer().resetAccumulation();
 		}

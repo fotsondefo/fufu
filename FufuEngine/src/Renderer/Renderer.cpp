@@ -522,18 +522,34 @@ void main() {
 
 		auto& am = Fufu::Application::get().getProjectManager().getCurrentProject().getAssetManager();
 
-		// Cache BLAS par chemin de mesh : construit une seule fois par mesh
-		// unique, même si N entités le référencent — c'est l'instancing.
-		// Reconstruit à chaque frame comme le reste de l'upload (cohérent avec
-		// le sculpt/extrude qui mutent le mesh en mémoire), mais désormais le
-		// coût de build ET la mémoire GPU sont O(meshes uniques), plus
-		// O(instances × triangles).
+		// Caméra active : sert à choisir le LOD par distance (voir selectLOD).
+		glm::vec3 cameraPos(0.f);
+		if (Entity cam = scene.getPrimaryCamera())
+			cameraPos = cam.getComponent<TransformComponent>().position;
+
+		// Seuils de distance volontairement simples (pas de hystérésis ni de
+		// notion de taille à l'écran) : LOD0 en dessous de 15 unités, LOD1
+		// jusqu'à 40, LOD2 au-delà. Un "pop" est possible en traversant un
+		// seuil — acceptable pour cette première itération.
+		auto selectLOD = [](float distance) -> int
+		{
+			if (distance > 40.f) return 2;
+			if (distance > 15.f) return 1;
+			return 0;
+		};
+
+		// Cache BLAS par (chemin de mesh, niveau de LOD) : construit une seule
+		// fois par combinaison unique, même si N entités la référencent —
+		// c'est l'instancing. Reconstruit à chaque frame comme le reste de
+		// l'upload (cohérent avec le sculpt/extrude qui mutent LOD0 en
+		// mémoire ; voir MeshAsset::invalidateLODs pour les LOD générés).
 		struct BLASRef { int nodeOffset; int triOffset; };
 		std::unordered_map<std::string, BLASRef> blasCache;
 
-		auto getOrBuildBLAS = [&](const std::string& path) -> const BLASRef*
+		auto getOrBuildBLAS = [&](const std::string& path, int lod) -> const BLASRef*
 		{
-			auto found = blasCache.find(path);
+			std::string key = path + "#lod" + std::to_string(lod);
+			auto found = blasCache.find(key);
 			if (found != blasCache.end())
 				return &found->second;
 
@@ -542,7 +558,7 @@ void main() {
 				return nullptr;
 
 			std::vector<GPUTriangle> localTris;
-			for (const auto& sub : meshAsset->getSubMeshes())
+			for (const auto& sub : meshAsset->getLODSubMeshes(lod))
 			{
 				for (std::size_t i = 0; i + 2 < sub.indices.size(); i += 3)
 				{
@@ -574,17 +590,18 @@ void main() {
 			m_BLASNodes.insert(m_BLASNodes.end(), localNodes.begin(), localNodes.end());
 			m_Triangles.insert(m_Triangles.end(), localTris.begin(), localTris.end());
 
-			return &blasCache.emplace(path, ref).first->second;
+			return &blasCache.emplace(std::move(key), ref).first->second;
 		};
 
-		// Meshes "classiques" : le même BLAS peut être partagé par plusieurs instances.
+		// Meshes "classiques" : le même BLAS (mesh, LOD) peut être partagé par plusieurs instances.
 		scene.each<TransformComponent, MeshComponent, MaterialComponent>(
 			[&](entt::entity /*e*/,
 				TransformComponent& transform,
 				MeshComponent& meshComp,
 				MaterialComponent& matComp)
 		{
-			const BLASRef* blas = getOrBuildBLAS(meshComp.meshPath);
+			float distance = glm::length(transform.position - cameraPos);
+			const BLASRef* blas = getOrBuildBLAS(meshComp.meshPath, selectLOD(distance));
 			if (!blas) return;
 
 			int matIdx = static_cast<int>(m_Materials.size());

@@ -103,6 +103,7 @@ namespace FufuStudio
 			subMeshes[m_SubMeshIndex] = mesh;
 			m_After = mesh;
 
+			asset->invalidateLODs(); // LOD0 a changé, les LOD générés sont obsolètes
 			Fufu::MeshExporter::writeObj(m_MeshPath, mesh);
 			Fufu::Application::get().getRenderer().resetAccumulation();
 		}
@@ -116,6 +117,7 @@ namespace FufuStudio
 			if (m_SubMeshIndex >= subMeshes.size()) return;
 
 			subMeshes[m_SubMeshIndex] = m_Before;
+			asset->invalidateLODs();
 			Fufu::MeshExporter::writeObj(m_MeshPath, m_Before);
 			Fufu::Application::get().getRenderer().resetAccumulation();
 		}
@@ -129,6 +131,7 @@ namespace FufuStudio
 			if (m_SubMeshIndex >= subMeshes.size()) return;
 
 			subMeshes[m_SubMeshIndex] = m_After;
+			asset->invalidateLODs();
 			Fufu::MeshExporter::writeObj(m_MeshPath, m_After);
 			Fufu::Application::get().getRenderer().resetAccumulation();
 		}
