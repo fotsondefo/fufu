@@ -58,6 +58,20 @@ namespace Fufu
 		float     _pad[3];
 	};
 
+	// Directional : positionOrDirection.xyz = direction allant d'une surface
+	// VERS la lumière (normalisé), radius = rayon angulaire (rad).
+	// Point     : positionOrDirection.xyz = position monde, radius = rayon
+	// physique de la source (unités monde) — atténuation 1/distance² gérée
+	// côté shader, pas ici.
+	struct alignas(16) GPULight
+	{
+		glm::vec4 positionOrDirection;
+		glm::vec4 color;    // rgb = couleur, a = intensité
+		float     radius;
+		int       type;     // 0 = Directional, 1 = Point (voir Fufu::LightType)
+		float     _pad[2];
+	};
+
 	struct alignas(16) GPUCamera
 	{
 		glm::vec4 position;
@@ -80,6 +94,7 @@ namespace Fufu
 		int   height;
 		int   triangleCount;
 		int   materialCount;
+		int   lightCount;
 	};
 
 }

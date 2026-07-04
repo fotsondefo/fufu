@@ -72,6 +72,7 @@ namespace Fufu
 		uint32_t m_BLASNodeSSBO = 0;  // BLAS : nœuds BVH, concaténés par mesh unique
 		uint32_t m_InstanceSSBO = 0;  // une entrée par instance (transform + réf. BLAS + matériau)
 		uint32_t m_TLASNodeSSBO = 0;  // BVH de plus haut niveau, sur les boîtes des instances
+		uint32_t m_LightSSBO = 0;
 		uint32_t m_CameraUBO = 0;
 		uint32_t m_FrameDataUBO = 0;
 
@@ -91,6 +92,7 @@ namespace Fufu
 		std::vector<GPUBVHNode>  m_BLASNodes;   // BLAS, concat�n�s par mesh unique
 		std::vector<GPUInstance> m_Instances;
 		std::vector<GPUBVHNode>  m_TLASNodes;
+		std::vector<GPULight>    m_Lights;
 	};
 
 }

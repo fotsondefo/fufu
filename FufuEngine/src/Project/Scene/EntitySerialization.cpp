@@ -117,6 +117,17 @@ namespace Fufu
 			};
 		}
 
+		if (reg.all_of<LightComponent>(handle))
+		{
+			auto& l = reg.get<LightComponent>(handle);
+			j["light"] = {
+				{ "type",      l.type == LightType::Point ? "point" : "directional" },
+				{ "color",     serializeVec3(l.color) },
+				{ "intensity", l.intensity },
+				{ "radius",    l.radius }
+			};
+		}
+
 		return j;
 	}
 
@@ -184,6 +195,18 @@ namespace Fufu
 			if (j["groom"].contains("color"))
 				g.color = deserializeVec4(j["groom"]["color"]);
 			entity.addComponent<GroomComponent>(g);
+		}
+
+		if (j.contains("light"))
+		{
+			LightComponent l;
+			std::string type = j["light"].value("type", "directional");
+			l.type = (type == "point") ? LightType::Point : LightType::Directional;
+			if (j["light"].contains("color"))
+				l.color = deserializeVec3(j["light"]["color"]);
+			l.intensity = j["light"].value("intensity", 3.f);
+			l.radius = j["light"].value("radius", 0.0087f);
+			entity.addComponent<LightComponent>(l);
 		}
 
 		return entity;

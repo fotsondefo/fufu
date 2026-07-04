@@ -79,6 +79,26 @@ namespace Fufu
 		glm::vec4 color = { 0.25f, 0.15f, 0.1f, 1.f };
 	};
 
+	// ----------------------------------------------------------------- Light
+	// Directional (soleil) et Point pour l'instant — Area viendra plus tard.
+	// Pas de champ direction/position dédié : la directionnelle se dérive de
+	// la ROTATION de l'entité (même convention que la caméra, voir
+	// ViewportPanel::handleCameraInput), le point de la POSITION — donc les
+	// gizmos de transform existants fonctionnent dessus sans rien ajouter.
+	enum class LightType { Directional, Point };
+
+	struct LightComponent
+	{
+		LightType type = LightType::Directional;
+		glm::vec3 color = { 1.f, 1.f, 1.f };
+		float     intensity = 3.f;
+
+		// Directional : rayon angulaire apparent (rad) — soleil réel ~0.5°.
+		// Point : rayon physique de la source (unités monde) — donne des
+		// ombres douces et évite une intensité infinie au contact.
+		float     radius = 0.0087f;
+	};
+
 	// ------------------------------------------------------------- Material
 	struct MaterialComponent
 	{

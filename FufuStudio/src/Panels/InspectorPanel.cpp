@@ -93,6 +93,9 @@ namespace FufuStudio
 		if (entity.hasComponent<Fufu::GroomComponent>())
 			drawGroom(entity, state);
 
+		if (entity.hasComponent<Fufu::LightComponent>())
+			drawLight(entity, state);
+
 		// Bouton "Add Component"
 		ImGui::Spacing();
 		ImGui::Separator();
@@ -108,6 +111,8 @@ namespace FufuStudio
 			// Groom a besoin d'un Mesh (surface porteuse) pour produire quoi que ce soit
 			if (entity.hasComponent<Fufu::MeshComponent>())
 				drawAddComponentButton<Fufu::GroomComponent>(entity, "Groom", state);
+
+			drawAddComponentButton<Fufu::LightComponent>(entity, "Light", state);
 
 			ImGui::EndPopup();
 		}
@@ -345,6 +350,64 @@ namespace FufuStudio
 
 		if (ImGui::SmallButton("Remove##groom"))
 			state.commandHistory->executeCommand<ComponentRemoveCommand<Fufu::GroomComponent>>(entity);
+	}
+
+	void InspectorPanel::drawLight(Fufu::Entity entity, EditorState& state)
+	{
+		if (!ImGui::CollapsingHeader("Light", ImGuiTreeNodeFlags_DefaultOpen))
+			return;
+
+		auto& light = entity.getComponent<Fufu::LightComponent>();
+		bool changed = false;
+
+		int typeIdx = static_cast<int>(light.type);
+		if (ImGui::RadioButton("Sun (Directional)", &typeIdx, 0)) changed = true;
+		ImGui::SameLine();
+		if (ImGui::RadioButton("Point", &typeIdx, 1)) changed = true;
+		if (changed) light.type = static_cast<Fufu::LightType>(typeIdx);
+		trackEdit(entity, m_PendingLight, state);
+
+		if (light.type == Fufu::LightType::Directional)
+			ImGui::TextDisabled("Rotate this entity to change the light direction.");
+		else
+			ImGui::TextDisabled("Move this entity to change the light position.");
+
+		ImGui::Text("Color");
+		ImGui::SameLine();
+		float col[3] = { light.color.r, light.color.g, light.color.b };
+		if (ImGui::ColorEdit3("##lightcolor", col))
+		{
+			light.color = glm::vec3(col[0], col[1], col[2]);
+			changed = true;
+		}
+		trackEdit(entity, m_PendingLight, state);
+
+		if (light.type == Fufu::LightType::Directional)
+			changed |= ImGui::DragFloat("Intensity", &light.intensity, 0.05f, 0.f, 100.f);
+		else
+			changed |= ImGui::DragFloat("Intensity", &light.intensity, 1.f, 0.f, 10000.f);
+		trackEdit(entity, m_PendingLight, state);
+
+		if (light.type == Fufu::LightType::Directional)
+		{
+			float angularDeg = glm::degrees(light.radius);
+			if (ImGui::DragFloat("Softness (°)", &angularDeg, 0.01f, 0.f, 20.f, "%.3f"))
+			{
+				light.radius = glm::radians(angularDeg);
+				changed = true;
+			}
+		}
+		else
+		{
+			if (ImGui::DragFloat("Radius", &light.radius, 0.005f, 0.f, 20.f)) changed = true;
+		}
+		trackEdit(entity, m_PendingLight, state);
+
+		if (changed)
+			Fufu::Application::get().getRenderer().resetAccumulation();
+
+		if (ImGui::SmallButton("Remove##light"))
+			state.commandHistory->executeCommand<ComponentRemoveCommand<Fufu::LightComponent>>(entity);
 	}
 
 }

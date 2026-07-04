@@ -294,6 +294,40 @@ namespace FufuStudio
 					[](Fufu::Entity e) { e.addComponent<Fufu::CameraComponent>(); });
 			}
 
+			if (ImGui::BeginMenu("Create Light"))
+			{
+				if (ImGui::MenuItem("Sun (Directional)"))
+				{
+					state.commandHistory->executeCommand<EntityCreateCommand>(activeScene, "Sun", Fufu::Entity{},
+						[](Fufu::Entity e)
+						{
+							// Orientation par défaut façon "soleil" : incliné vers le bas
+							// plutôt que (0,0,0) qui pointerait à l'horizontale.
+							auto& t = e.getComponent<Fufu::TransformComponent>();
+							t.rotation = glm::vec3(glm::radians(-45.f), glm::radians(30.f), 0.f);
+							e.addComponent<Fufu::LightComponent>();
+						});
+				}
+
+				if (ImGui::MenuItem("Point"))
+				{
+					state.commandHistory->executeCommand<EntityCreateCommand>(activeScene, "Point Light", Fufu::Entity{},
+						[](Fufu::Entity e)
+						{
+							Fufu::LightComponent light;
+							light.type = Fufu::LightType::Point;
+							// L'intensité par défaut (pensée pour le soleil) serait
+							// quasi invisible une fois atténuée en 1/distance² : on
+							// remonte à des valeurs adaptées à une lampe de pièce.
+							light.intensity = 50.f;
+							light.radius = 0.1f;
+							e.addComponent<Fufu::LightComponent>(light);
+						});
+				}
+
+				ImGui::EndMenu();
+			}
+
 			if (ImGui::BeginMenu("Create Primitive"))
 			{
 				if (ImGui::MenuItem("Cube"))

@@ -19,6 +19,7 @@ namespace FufuStudio
 		void drawMaterial(Fufu::Entity entity, EditorState& state);
 		void drawCamera(Fufu::Entity entity, EditorState& state);
 		void drawGroom(Fufu::Entity entity, EditorState& state);
+		void drawLight(Fufu::Entity entity, EditorState& state);
 
 		template<typename T>
 		void drawAddComponentButton(Fufu::Entity entity, const char* label, EditorState& state);
@@ -36,6 +37,7 @@ namespace FufuStudio
 		std::optional<Fufu::MaterialComponent>  m_PendingMaterial;
 		std::optional<Fufu::CameraComponent>    m_PendingCamera;
 		std::optional<Fufu::GroomComponent>     m_PendingGroom;
+		std::optional<Fufu::LightComponent>     m_PendingLight;
 	};
 
 }

@@ -57,11 +57,24 @@ struct Instance {
     int  _pad;
 };
 
+// Directional (type 0) : positionOrDirection.xyz = direction vers la lumière
+// (normalisé), radius = rayon angulaire (rad).
+// Point (type 1) : positionOrDirection.xyz = position monde, radius = rayon
+// physique de la source (atténuation 1/distance² calculée dans tracePath).
+struct Light {
+    vec4  positionOrDirection;
+    vec4  color; // rgb = couleur, a = intensité
+    float radius;
+    int   type;
+    float _pad[2];
+};
+
 layout(std430, binding = 2) readonly buffer TriangleBuffer { Triangle triangles[]; };   // BLAS, espace local
 layout(std430, binding = 3) readonly buffer MaterialBuffer { Material materials[]; };
 layout(std430, binding = 6) readonly buffer BLASNodeBuffer { BVHNode blasNodes[]; };
 layout(std430, binding = 7) readonly buffer InstanceBuffer { Instance instances[]; };
 layout(std430, binding = 8) readonly buffer TLASBuffer     { BVHNode tlasNodes[]; };
+layout(std430, binding = 9) readonly buffer LightBuffer    { Light lights[]; };
 
 layout(std140, binding = 4) uniform CameraBlock {
     vec4  camPosition;
@@ -83,6 +96,7 @@ layout(std140, binding = 5) uniform FrameBlock {
     int   height;
     int   triangleCount;
     int   materialCount;
+    int   lightCount;
 };
 
 // ---- RNG (PCG hash) ----
@@ -248,6 +262,91 @@ HitInfo intersectScene(Ray ray) {
     return closest;
 }
 
+// Version "any-hit" du BLAS : s'arrête au tout premier triangle touché AVANT
+// maxDist, sans chercher le plus proche. Utilisée pour les tests d'ombre
+// (question oui/non — "quelque chose bloque-t-il avant la lumière ?"), qui
+// n'ont pas besoin de savoir LEQUEL bloque : sortir dès le premier contact
+// évite de continuer à explorer des feuilles pour rien. maxDist est en
+// espace LOCAL (voir intersectSceneShadow pour la conversion depuis le monde).
+bool intersectBLASAny(Ray ray, int nodeOffset, int triOffset, float maxDist) {
+    int stack[32];
+    int stackPtr = 0;
+    stack[stackPtr++] = 0;
+
+    while (stackPtr > 0) {
+        int localIdx = stack[--stackPtr];
+        BVHNode node = blasNodes[nodeOffset + localIdx];
+
+        float tNear;
+        if (!intersectAABB(ray, node.boundsMin.xyz, node.boundsMax.xyz, tNear)) continue;
+        if (tNear > maxDist) continue;
+
+        if (node.triCount > 0) {
+            for (int i = 0; i < node.triCount; ++i) {
+                HitInfo h = intersectTriangle(ray, triangles[triOffset + node.firstTri + i]);
+                if (h.hit && h.t < maxDist)
+                    return true;
+            }
+        } else {
+            stack[stackPtr++] = node.left;
+            stack[stackPtr++] = node.right;
+        }
+    }
+
+    return false;
+}
+
+// Version "any-hit" du TLAS, pour les mêmes raisons — utilisée par les rayons
+// d'ombre du NEE (voir tracePath) à la place d'intersectScene, nettement
+// moins cher qu'une recherche de plus-proche-contact pour un simple booléen.
+// maxDistWorld : distance (espace monde) au-delà de laquelle un contact ne
+// compte pas comme occlusion — 1e30 pour une directionnelle ("infinie"),
+// la distance jusqu'à la source pour une point light (ne pas compter ce qui
+// est derrière la lumière comme un obstacle).
+bool intersectSceneShadow(Ray ray, float maxDistWorld) {
+    if (triangleCount <= 0) return false; // triangleCount réutilisé comme "nombre d'instances"
+
+    int stack[64];
+    int stackPtr = 0;
+    stack[stackPtr++] = 0;
+
+    while (stackPtr > 0) {
+        int nodeIdx = stack[--stackPtr];
+        BVHNode node = tlasNodes[nodeIdx];
+
+        float tNear;
+        if (!intersectAABB(ray, node.boundsMin.xyz, node.boundsMax.xyz, tNear)) continue;
+        if (tNear > maxDistWorld) continue;
+
+        if (node.triCount > 0) {
+            for (int i = 0; i < node.triCount; ++i) {
+                Instance inst = instances[node.firstTri + i];
+
+                vec3 localOrigin = (inst.invTransform * vec4(ray.origin, 1.0)).xyz;
+                vec3 localDirRaw = (inst.invTransform * vec4(ray.dir, 0.0)).xyz;
+                float dirLen = length(localDirRaw);
+                if (dirLen < 1e-8) continue;
+
+                Ray localRay;
+                localRay.origin = localOrigin;
+                localRay.dir    = localDirRaw / dirLen;
+
+                // maxDist est mesuré en espace local (rayon normalisé
+                // localement) : même conversion que dans intersectScene.
+                float localMaxDist = (maxDistWorld >= 1e29) ? 1e30 : maxDistWorld * dirLen;
+
+                if (intersectBLASAny(localRay, inst.blasNodeOffset, inst.blasTriOffset, localMaxDist))
+                    return true;
+            }
+        } else {
+            stack[stackPtr++] = node.left;
+            stack[stackPtr++] = node.right;
+        }
+    }
+
+    return false;
+}
+
 // ---- Sampling ----
 vec3 cosineHemisphere(vec3 normal, inout uint seed) {
     float u1 = rand(seed), u2 = rand(seed);
@@ -257,6 +356,40 @@ vec3 cosineHemisphere(vec3 normal, inout uint seed) {
     vec3  bt  = cross(normal, t);
     t         = cross(bt, normal);
     return normalize(r * cos(phi) * t + r * sin(phi) * bt + sqrt(1.0 - u1) * normal);
+}
+
+// Échantillonne une direction dans un petit cône autour de `dir` (rayon
+// angulaire `angularRadius`) : sert à donner un diamètre apparent aux
+// lumières directionnelles, donc des ombres douces plutôt qu'un aliasing net.
+vec3 sampleConeDirection(vec3 dir, float angularRadius, inout uint seed) {
+    if (angularRadius <= 0.0) return dir;
+
+    float u1 = rand(seed), u2 = rand(seed);
+    float cosThetaMax = cos(angularRadius);
+    float cosTheta    = mix(cosThetaMax, 1.0, u1);
+    float sinTheta    = sqrt(max(0.0, 1.0 - cosTheta * cosTheta));
+    float phi         = 6.28318530718 * u2;
+
+    vec3 t  = normalize(abs(dir.x) > 0.9 ? vec3(0,1,0) : vec3(1,0,0));
+    vec3 bt = normalize(cross(dir, t));
+    t       = cross(bt, dir);
+
+    return normalize(cosTheta * dir + sinTheta * cos(phi) * t + sinTheta * sin(phi) * bt);
+}
+
+// Échantillonne un point uniforme sur la sphère de rayon `radius` autour de
+// `center` : donne un diamètre physique aux point lights, donc des ombres
+// douces plutôt qu'une source ponctuelle idéale (aliasing net).
+vec3 samplePointOnSphere(vec3 center, float radius, inout uint seed) {
+    if (radius <= 0.0) return center;
+
+    float u1 = rand(seed), u2 = rand(seed);
+    float z   = 1.0 - 2.0 * u1;
+    float r   = sqrt(max(0.0, 1.0 - z * z));
+    float phi = 6.28318530718 * u2;
+
+    vec3 offset = vec3(r * cos(phi), r * sin(phi), z) * radius;
+    return center + offset;
 }
 
 vec3 reflect(vec3 v, vec3 n) { return v - 2.0 * dot(v, n) * n; }
@@ -293,6 +426,12 @@ vec3 tracePath(Ray ray, inout uint seed) {
         vec3 albedo  = mat.albedo.rgb;
         vec3 N       = hit.normal;
 
+        // Point d'intersection réel, calculé AVANT toute réassignation de
+        // ray.dir (les branches ci-dessous en avaient besoin après coup, ce
+        // qui recalculait un point au hasard le long de la NOUVELLE direction
+        // plutôt que le point d'impact — corrigé ici une bonne fois).
+        vec3 hitPoint = ray.origin + ray.dir * hit.t;
+
         // �mission
         if (mat.emissive > 0.0) {
             radiance += throughput * albedo * mat.emissive;
@@ -313,7 +452,7 @@ vec3 tracePath(Ray ray, inout uint seed) {
             vec3 roughDir = cosineHemisphere(N, seed);
             vec3 specDir  = reflect(ray.dir, N);
             ray.dir    = normalize(mix(specDir, roughDir, mat.roughness * mat.roughness));
-            ray.origin = hit.t * ray.dir + ray.origin + N * 1e-4;
+            ray.origin = hitPoint + N * 1e-4;
             throughput *= albedo;
         }
         else if (r < specProb + refrProb) {
@@ -322,13 +461,58 @@ vec3 tracePath(Ray ray, inout uint seed) {
             float eta = dot(ray.dir, N) < 0.0 ? (1.0 / mat.ior) : mat.ior;
             vec3  refractDir = refract(ray.dir, N, eta, tir);
             ray.dir    = tir ? reflect(ray.dir, N) : refractDir;
-            ray.origin = hit.t * ray.dir + ray.origin - N * 1e-4;
+            ray.origin = hitPoint - N * 1e-4;
             throughput *= albedo;
         }
         else {
             // Diffuse (Lambertian)
+
+            // NEE : échantillonnage direct des lumières. Sans ça, un rayon ne
+            // trouve une lumière qu'en la heurtant par hasard au fil d'un
+            // rebond — ici on tire un rayon d'ombre direct à chaque rebond
+            // diffus, ce qui donne des ombres nettes et une convergence bien
+            // plus rapide. Pas de MIS nécessaire : une lumière directionnelle
+            // n'a pas de géométrie propre, un rebond indirect ne peut donc
+            // jamais la "redécouvrir" par intersection.
+            for (int li = 0; li < lightCount; ++li) {
+                Light light = lights[li];
+
+                vec3  Ldir;
+                float maxDist;       // distance monde au-delà de laquelle un contact ne bloque pas la lumière
+                vec3  lightRadiance;
+
+                if (light.type == 0) {
+                    // Directionnelle : "infiniment loin", pas d'atténuation par distance.
+                    Ldir = sampleConeDirection(light.positionOrDirection.xyz, light.radius, seed);
+                    maxDist = 1e30;
+                    lightRadiance = light.color.rgb * light.color.a;
+                } else {
+                    // Point : atténuation en 1/distance², bornée par la distance
+                    // jusqu'à la source (ce qui est derrière elle ne bloque pas).
+                    vec3 samplePos = samplePointOnSphere(light.positionOrDirection.xyz, light.radius, seed);
+                    vec3 toLight   = samplePos - hitPoint;
+                    float dist     = length(toLight);
+                    Ldir = toLight / max(dist, 1e-6);
+                    maxDist = dist - 1e-3;
+                    float atten = 1.0 / max(dist * dist, 1e-4);
+                    lightRadiance = light.color.rgb * light.color.a * atten;
+                }
+
+                float NdotL = dot(N, Ldir);
+
+                if (NdotL > 0.0) {
+                    Ray shadowRay;
+                    shadowRay.origin = hitPoint + N * 1e-4;
+                    shadowRay.dir    = Ldir;
+
+                    if (!intersectSceneShadow(shadowRay, maxDist)) {
+                        radiance += throughput * albedo * (1.0 - mat.metallic) * lightRadiance * NdotL;
+                    }
+                }
+            }
+
             ray.dir    = cosineHemisphere(N, seed);
-            ray.origin = hit.t * ray.dir + ray.origin + N * 1e-4;
+            ray.origin = hitPoint + N * 1e-4;
             throughput *= albedo * (1.0 - mat.metallic);
         }
 
@@ -437,6 +621,7 @@ void main() {
 		glDeleteBuffers(1, &m_BLASNodeSSBO);
 		glDeleteBuffers(1, &m_InstanceSSBO);
 		glDeleteBuffers(1, &m_TLASNodeSSBO);
+		glDeleteBuffers(1, &m_LightSSBO);
 		glDeleteBuffers(1, &m_CameraUBO);
 		glDeleteBuffers(1, &m_FrameDataUBO);
 		glDeleteVertexArrays(1, &m_QuadVAO);
@@ -481,6 +666,7 @@ void main() {
 		glGenBuffers(1, &m_BLASNodeSSBO);
 		glGenBuffers(1, &m_InstanceSSBO);
 		glGenBuffers(1, &m_TLASNodeSSBO);
+		glGenBuffers(1, &m_LightSSBO);
 		glGenBuffers(1, &m_CameraUBO);
 		glGenBuffers(1, &m_FrameDataUBO);
 	}
@@ -667,6 +853,34 @@ void main() {
 		}
 		);
 
+		// Lumières : la Directional dérive sa direction de la ROTATION de
+		// l'entité (même convention que la caméra), la Point de sa POSITION —
+		// pas de champ dédié, les gizmos de transform existants suffisent.
+		m_Lights.clear();
+		scene.each<TransformComponent, LightComponent>(
+			[&](entt::entity /*e*/, TransformComponent& transform, LightComponent& light)
+		{
+			GPULight gpuLight{};
+			gpuLight.color = glm::vec4(light.color, light.intensity);
+			gpuLight.radius = light.radius;
+
+			if (light.type == LightType::Directional)
+			{
+				glm::quat rotation = glm::quat(transform.rotation);
+				glm::vec3 forward = glm::normalize(rotation * glm::vec3(0.f, 0.f, -1.f));
+				gpuLight.positionOrDirection = glm::vec4(-forward, 0.f); // de la surface VERS la lumière
+				gpuLight.type = 0;
+			}
+			else
+			{
+				gpuLight.positionOrDirection = glm::vec4(transform.position, 0.f);
+				gpuLight.type = 1;
+			}
+
+			m_Lights.push_back(gpuLight);
+		}
+		);
+
 		// TLAS : une boîte englobante MONDE par instance, dérivée des 8 coins
 		// de la boîte locale de la racine de son BLAS.
 		std::vector<glm::vec3> instBoundsMin(m_Instances.size());
@@ -734,6 +948,12 @@ void main() {
 			m_TLASNodes.size() * sizeof(GPUBVHNode),
 			m_TLASNodes.data(), GL_DYNAMIC_DRAW);
 
+		// Upload lumières
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_LightSSBO);
+		glBufferData(GL_SHADER_STORAGE_BUFFER,
+			m_Lights.size() * sizeof(GPULight),
+			m_Lights.data(), GL_DYNAMIC_DRAW);
+
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
 		FUFU_TRACE("Scene uploaded: {} instances, {} unique BLAS triangles, {} materials",
@@ -791,6 +1011,7 @@ void main() {
 		// vide pour le TLAS) — voir intersectScene dans le compute shader.
 		frameData.triangleCount = static_cast<int>(m_Instances.size());
 		frameData.materialCount = static_cast<int>(m_Materials.size());
+		frameData.lightCount = static_cast<int>(m_Lights.size());
 
 		glBindBuffer(GL_UNIFORM_BUFFER, m_FrameDataUBO);
 		glBufferData(GL_UNIFORM_BUFFER, sizeof(GPUFrameData), &frameData, GL_DYNAMIC_DRAW);
@@ -820,6 +1041,7 @@ void main() {
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 6, m_BLASNodeSSBO);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 7, m_InstanceSSBO);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 8, m_TLASNodeSSBO);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 9, m_LightSSBO);
 
 		// Dispatch � groupes de 16x16
 		int gx = (m_Width + 15) / 16;
