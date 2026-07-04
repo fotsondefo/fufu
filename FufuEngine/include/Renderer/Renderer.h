@@ -2,12 +2,19 @@
 
 #include "RenderSettings.h"
 #include "GPUBuffers.h"
-#include "BVH.h"
+#include "GPUScene.h"
+#include "Passes/ComputePass.h"
+#include "Passes/FXAAPass.h"
 #include "Project/Scene/Scene.h"
 
-namespace Fufu 
+namespace Fufu
 {
 
+	// Orchestrateur : possède les textures partagées entre passes et l'état
+	// d'accumulation, construit la caméra/frame GPU à partir de la Scene/ECS
+	// (seule partie qui reste ici plutôt que dans une passe, car elle dépend
+	// des components), puis délègue le gros du travail à GPUScene (empaquetage
+	// géométrie) et aux passes (ComputePass, FXAAPass).
 	class Renderer
 	{
 	public:
@@ -30,40 +37,23 @@ namespace Fufu
 
 		int getAccumulatedFrames() const { return m_FrameIndex; }
 
-		// Texture à afficher : m_FXAATexture si le mode FXAA est actif (post-processée),
-		// m_OutputTexture sinon.
+		// Texture à afficher : la sortie du FXAAPass si le mode FXAA est actif
+		// (post-processée), m_OutputTexture sinon.
 		uint32_t getOutputTextureID() const
 		{
-			return (m_Settings.aaMode == AAMode::FXAA) ? m_FXAATexture : m_OutputTexture;
+			return (m_Settings.aaMode == AAMode::FXAA) ? m_FXAAPass.getOutputTexture() : m_OutputTexture;
 		}
 
 	private:
 		// Init OpenGL
 		void createTextures();
-		void createShaders();
-		void createSSBOs();
 		void createQuad();
-		void createFXAAResources();
 
-		// Upload scene ? GPU
-		void uploadSceneData(Scene& scene);
 		bool sceneNeedsUpdate(Scene& scene);
-
-		// Passes de rendu
-		void computePass();
-		void blitPass();
-
-		// Post-process FXAA : lit m_OutputTexture, écrit m_FXAATexture
-		// (ne peut pas lire/écrire la même texture dans un seul pass).
-		void fxaaPass();
 
 		// Efface la texture de sortie (scène sans caméra primaire) : sinon
 		// l'image de la scène précédente reste affichée telle quelle.
 		void clearOutput();
-
-		// Compilation shader
-		uint32_t compileShader(uint32_t type, const std::string& source);
-		uint32_t linkProgram(std::initializer_list<uint32_t> shaders);
 
 	private:
 		RenderSettings m_Settings;
@@ -71,30 +61,17 @@ namespace Fufu
 		int m_Width = 0;
 		int m_Height = 0;
 
-		// Textures
-		uint32_t m_OutputTexture = 0; // R�sultat final (RGBA32F)
+		// Textures partagées entre passes
+		uint32_t m_OutputTexture = 0; // Résultat du ComputePass (RGBA32F)
 		uint32_t m_AccumTexture = 0; // Accumulation (RGBA32F)
-		uint32_t m_FXAATexture = 0; // Sortie du post-process FXAA (RGBA32F)
-		uint32_t m_FXAAFBO = 0;
 
-		// Programs OpenGL
-		uint32_t m_ComputeProgram = 0;
-		uint32_t m_BlitProgram = 0;
-		uint32_t m_FXAAProgram = 0;
-
-		// SSBOs
-		uint32_t m_TriangleSSBO = 0;  // BLAS : triangles en espace local, concaténés par mesh unique
-		uint32_t m_MaterialSSBO = 0;
-		uint32_t m_BLASNodeSSBO = 0;  // BLAS : nœuds BVH, concaténés par mesh unique
-		uint32_t m_InstanceSSBO = 0;  // une entrée par instance (transform + réf. BLAS + matériau)
-		uint32_t m_TLASNodeSSBO = 0;  // BVH de plus haut niveau, sur les boîtes des instances
-		uint32_t m_LightSSBO = 0;
-		uint32_t m_CameraUBO = 0;
-		uint32_t m_FrameDataUBO = 0;
-
-		// Quad de blit
+		// Quad plein écran partagé (utilisé par FXAAPass)
 		uint32_t m_QuadVAO = 0;
 		uint32_t m_QuadVBO = 0;
+
+		GPUScene    m_GPUScene;
+		ComputePass m_ComputePass;
+		FXAAPass    m_FXAAPass;
 
 		// Accumulation
 		int      m_FrameIndex = 0;
@@ -103,17 +80,6 @@ namespace Fufu
 		// soit le RenderMode (contrairement à m_FrameIndex, qui reste à 0 en
 		// Realtime) — c'est ce qui permet au TAA de lisser même hors accumulation.
 		int      m_TAAFrameIndex = 0;
-
-		// Version tracking pour �viter les uploads inutiles
-		uint32_t m_LastSceneVersion = 0;
-
-		// Cache des donn�es GPU
-		std::vector<GPUTriangle> m_Triangles;   // BLAS, espace local, concat�n�s par mesh unique
-		std::vector<GPUMaterial> m_Materials;
-		std::vector<GPUBVHNode>  m_BLASNodes;   // BLAS, concat�n�s par mesh unique
-		std::vector<GPUInstance> m_Instances;
-		std::vector<GPUBVHNode>  m_TLASNodes;
-		std::vector<GPULight>    m_Lights;
 	};
 
 }
