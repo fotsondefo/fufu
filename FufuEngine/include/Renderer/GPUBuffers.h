@@ -99,6 +99,8 @@ namespace Fufu
 		int   aaMode;         // 0=None, 1=SSAA, 2=TAA, 3=FXAA (voir Fufu::AAMode)
 		int   taaFrameIndex;  // Compteur dédié au TAA : incrémente à chaque frame quel que soit le RenderMode
 		float taaBlendFactor;
+		int   hasSkybox;       // 1 = échantillonner u_Skybox, 0 = dégradé de ciel procédural
+		float skyboxIntensity;
 	};
 
 }

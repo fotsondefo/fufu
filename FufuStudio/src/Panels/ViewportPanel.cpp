@@ -4,13 +4,16 @@
 #include <GLFW/glfw3.h>
 #include <Application/Application.h>
 #include <Project/Components.h>
+#include <Project/Assets/PrimitiveMeshes.h>
 #include <algorithm>
 #include "Tools/TransformGizmoTool.h"
 #include "Tools/ModelingTool.h"
 #include "Tools/SculptTool.h"
 #include "Helpers/AssetDrop.h"
+#include "Helpers/PrimitiveFactory.h"
 #include "Commands/CommandHistory.h"
 #include "Commands/EntityCommands.h"
+#include <nfd.hpp>
 
 namespace FufuStudio
 {
@@ -47,10 +50,12 @@ namespace FufuStudio
 			{
 				m_LastMousePos = mousePos;
 				m_FirstMouse = false;
+				m_RightClickDragDistance = 0.f;
 			}
 
 			glm::vec2 delta = mousePos - m_LastMousePos;
 			m_LastMousePos = mousePos;
+			m_RightClickDragDistance += glm::length(delta);
 
 			// Signe cohérent avec le forward dérivé du quaternion (voir plus bas) :
 			// souris à droite/haut doit tourner la vue à droite/vers le haut.
@@ -65,10 +70,18 @@ namespace FufuStudio
 			);
 
 			m_Renderer.resetAccumulation();
+			m_RightMouseWasDown = true;
 		}
 		else
 		{
 			m_FirstMouse = true;
+
+			// Clic droit relâché sans drag significatif (rotation caméra) :
+			// menu contextuel plutôt qu'une simple rotation qui n'a pas eu lieu.
+			if (m_RightMouseWasDown && m_RightClickDragDistance < 4.f && state.viewportHovered)
+				m_OpenContextMenu = true;
+
+			m_RightMouseWasDown = false;
 		}
 
 		// --- Déplacement WASD ---
@@ -221,8 +234,95 @@ namespace FufuStudio
 		m_OrientationGizmo.render(state);
 		m_OrientationGizmo.handleShortcuts(state);
 
+		drawContextMenu(state);
+
 		ImGui::End();
 		ImGui::PopStyleVar();
+	}
+
+	void ViewportPanel::drawContextMenu(EditorState& state)
+	{
+		if (m_OpenContextMenu)
+		{
+			ImGui::OpenPopup("ViewportContextMenu");
+			m_OpenContextMenu = false;
+		}
+
+		if (!ImGui::BeginPopup("ViewportContextMenu"))
+			return;
+
+		auto scene = state.getActiveScene();
+
+		if (ImGui::BeginMenu(ICON_FA_CUBE " Add Primitive"))
+		{
+			if (scene)
+			{
+				if (ImGui::MenuItem("Cube"))     createPrimitiveEntity(state, scene, "Cube", Fufu::PrimitiveMeshes::makeCube());
+				if (ImGui::MenuItem("Plane"))    createPrimitiveEntity(state, scene, "Plane", Fufu::PrimitiveMeshes::makePlane());
+				if (ImGui::MenuItem("Sphere"))   createPrimitiveEntity(state, scene, "Sphere", Fufu::PrimitiveMeshes::makeSphere());
+				if (ImGui::MenuItem("Cylinder")) createPrimitiveEntity(state, scene, "Cylinder", Fufu::PrimitiveMeshes::makeCylinder());
+			}
+			ImGui::EndMenu();
+		}
+
+		if (ImGui::BeginMenu(ICON_FA_LIGHTBULB_O " Add Light"))
+		{
+			if (scene)
+			{
+				if (ImGui::MenuItem("Sun (Directional)"))
+				{
+					state.commandHistory->executeCommand<EntityCreateCommand>(scene, "Sun", Fufu::Entity{},
+						[](Fufu::Entity e)
+						{
+							// Orientation par défaut façon "soleil" : incliné vers le bas
+							// plutôt que (0,0,0) qui pointerait à l'horizontale.
+							auto& t = e.getComponent<Fufu::TransformComponent>();
+							t.rotation = glm::vec3(glm::radians(-45.f), glm::radians(30.f), 0.f);
+							e.addComponent<Fufu::LightComponent>();
+						});
+				}
+
+				if (ImGui::MenuItem("Point"))
+				{
+					state.commandHistory->executeCommand<EntityCreateCommand>(scene, "Point Light", Fufu::Entity{},
+						[](Fufu::Entity e)
+						{
+							Fufu::LightComponent light;
+							light.type = Fufu::LightType::Point;
+							// L'intensité par défaut (pensée pour le soleil) serait quasi
+							// invisible une fois atténuée en 1/distance² : valeurs adaptées
+							// à une lampe de pièce à la place.
+							light.intensity = 50.f;
+							light.radius = 0.1f;
+							e.addComponent<Fufu::LightComponent>(light);
+						});
+				}
+			}
+			ImGui::EndMenu();
+		}
+
+		ImGui::Separator();
+
+		if (ImGui::MenuItem(ICON_FA_CAMERA " Export Rendered Image..."))
+			exportRenderedImage();
+
+		ImGui::EndPopup();
+	}
+
+	void ViewportPanel::exportRenderedImage()
+	{
+		NFD::Guard nfdGuard;
+		NFD::UniquePath outPath;
+		nfdfilteritem_t filter = { "PNG Image", "png" };
+
+		nfdresult_t result = NFD::SaveDialog(outPath, &filter, 1, nullptr, "render.png");
+		if (result != NFD_OKAY)
+			return;
+
+		std::filesystem::path path(outPath.get());
+		if (path.extension().empty()) path += ".png";
+
+		m_Renderer.exportImage(path);
 	}
 
 } // namespace FufuStudio

@@ -9,6 +9,8 @@ namespace Fufu
 	{
 		if (m_Data.pixels)
 			stbi_image_free(m_Data.pixels);
+		if (m_Data.floatPixels)
+			stbi_image_free(m_Data.floatPixels);
 	}
 
 }

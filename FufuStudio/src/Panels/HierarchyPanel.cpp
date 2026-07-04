@@ -2,7 +2,6 @@
 #include <Project/Components.h>
 #include <Project/PrefabSerializer.h>
 #include <Project/Assets/PrimitiveMeshes.h>
-#include <Project/Assets/MeshExporter.h>
 #include <Application/Application.h>
 #include <imgui.h>
 #include <nfd.hpp>
@@ -13,6 +12,7 @@
 #include "Commands/ComponentCommands.h"
 #include "Commands/PrefabCommands.h"
 #include "Helpers/AssetDrop.h"
+#include "Helpers/PrimitiveFactory.h"
 
 namespace FufuStudio
 {
@@ -22,50 +22,6 @@ namespace FufuStudio
 		return pm.hasProject()
 			? pm.getCurrentProject().getInfo().prefabsDir()
 			: std::filesystem::current_path();
-	}
-
-	static std::filesystem::path defaultPrimitivesDir()
-	{
-		auto& pm = Fufu::Application::get().getProjectManager();
-		return pm.hasProject()
-			? pm.getCurrentProject().getInfo().assetsDir() / "Meshes" / "Primitives"
-			: std::filesystem::current_path();
-	}
-
-	// Trouve un nom de fichier libre dans `dir` (Cube.obj, Cube_1.obj, ...)
-	static std::filesystem::path uniqueMeshFilePath(const std::filesystem::path& dir, const std::string& baseName)
-	{
-		std::filesystem::create_directories(dir);
-
-		std::filesystem::path candidate = dir / (baseName + ".obj");
-		int suffix = 1;
-		while (std::filesystem::exists(candidate))
-		{
-			candidate = dir / (baseName + "_" + std::to_string(suffix) + ".obj");
-			++suffix;
-		}
-		return candidate;
-	}
-
-	// Écrit la primitive sur disque (une fois) et crée une entité qui la
-	// référence. Le fichier généré n'est pas supprimé au undo (même logique
-	// que "Create Prefab" : les effets de bord fichier ne sont pas annulés,
-	// seul l'état de la scène l'est).
-	static void createPrimitiveEntity(EditorState& state, const std::shared_ptr<Fufu::Scene>& scene,
-		const std::string& name, const Fufu::SubMesh& mesh)
-	{
-		std::filesystem::path path = uniqueMeshFilePath(defaultPrimitivesDir(), name);
-		if (!Fufu::MeshExporter::writeObj(path, mesh))
-			return;
-
-		auto* cmd = state.commandHistory->executeCommand<EntityCreateCommand>(scene, name, Fufu::Entity{},
-			[path](Fufu::Entity e)
-			{
-				e.addComponent<Fufu::MeshComponent>(path.string(), uint64_t(0));
-				e.addComponent<Fufu::MaterialComponent>();
-			});
-
-		state.selection.select(cmd->getEntity());
 	}
 
 	void HierarchyPanel::onImGuiRender(EditorState& state)

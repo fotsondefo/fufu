@@ -18,7 +18,7 @@ namespace Fufu
 	AssetManager::AssetManager(const std::filesystem::path& rootDir)
 		: m_RootDir(rootDir)
 	{
-		FUFU_INFO("AssetManager created � root: '{}'", rootDir.string());
+		FUFU_INFO("AssetManager created � root: '{}'", rootDir.string());
 	}
 
 	void AssetManager::scanDirectory()
@@ -184,26 +184,58 @@ namespace Fufu
 	void AssetManager::loadTexture(std::shared_ptr<TextureAsset>& asset)
 	{
 		const std::string path = asset->m_Meta.sourcePath.string();
-		stbi_set_flip_vertically_on_load(true);
 
-		asset->m_Data.pixels = stbi_load(
-			path.c_str(),
-			&asset->m_Data.width,
-			&asset->m_Data.height,
-			&asset->m_Data.channels,
-			0
-		);
+		std::string ext = asset->m_Meta.sourcePath.extension().string();
+		std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+		asset->m_Data.isHDR = (ext == ".hdr");
 
-		if (!asset->m_Data.pixels)
+		// Flip vertical : utile pour les textures de mesh (convention UV
+		// OpenGL, v=0 en bas), mais casserait une HDRI équirectangulaire —
+		// sampleSky() suppose que la première ligne de l'image est le zénith
+		// (v=0 -> dir.y=1), pas le contraire.
+		stbi_set_flip_vertically_on_load(!asset->m_Data.isHDR);
+
+		if (asset->m_Data.isHDR)
 		{
-			FUFU_ERROR("TextureAsset: failed to load '{}'", path);
-			asset->m_Meta.state = AssetState::Failed;
-			return;
+			// HDRI équirectangulaire (skybox) : données flottantes, pas de
+			// clamp 0-1 comme le 8 bits classique.
+			asset->m_Data.floatPixels = stbi_loadf(
+				path.c_str(),
+				&asset->m_Data.width,
+				&asset->m_Data.height,
+				&asset->m_Data.channels,
+				0
+			);
+
+			if (!asset->m_Data.floatPixels)
+			{
+				FUFU_ERROR("TextureAsset: failed to load HDR '{}'", path);
+				asset->m_Meta.state = AssetState::Failed;
+				return;
+			}
+		}
+		else
+		{
+			asset->m_Data.pixels = stbi_load(
+				path.c_str(),
+				&asset->m_Data.width,
+				&asset->m_Data.height,
+				&asset->m_Data.channels,
+				0
+			);
+
+			if (!asset->m_Data.pixels)
+			{
+				FUFU_ERROR("TextureAsset: failed to load '{}'", path);
+				asset->m_Meta.state = AssetState::Failed;
+				return;
+			}
 		}
 
 		asset->m_Meta.state = AssetState::Loaded;
-		FUFU_INFO("Texture loaded: '{}' ({}x{} ch:{})",
-			path, asset->m_Data.width, asset->m_Data.height, asset->m_Data.channels);
+		FUFU_INFO("Texture loaded: '{}' ({}x{} ch:{}{})",
+			path, asset->m_Data.width, asset->m_Data.height, asset->m_Data.channels,
+			asset->m_Data.isHDR ? ", HDR" : "");
 	}
 
 	void AssetManager::loadMesh(std::shared_ptr<MeshAsset>& asset)
@@ -346,6 +378,11 @@ namespace Fufu
 			{
 				stbi_image_free(tex->m_Data.pixels);
 				tex->m_Data.pixels = nullptr;
+			}
+			if (tex->m_Data.floatPixels)
+			{
+				stbi_image_free(tex->m_Data.floatPixels);
+				tex->m_Data.floatPixels = nullptr;
 			}
 		}
 

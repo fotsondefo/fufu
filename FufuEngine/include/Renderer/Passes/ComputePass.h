@@ -16,8 +16,10 @@ namespace Fufu
 		void init();
 		void shutdown();
 
+		// skyboxTexture : 0 si aucun skybox actif (frameData.hasSkybox doit
+		// alors valoir 0 aussi ; voir Renderer::renderScene).
 		void execute(const GPUScene& scene, const GPUCamera& camera, const GPUFrameData& frameData,
-			uint32_t outputTexture, uint32_t accumTexture, int width, int height);
+			uint32_t outputTexture, uint32_t accumTexture, uint32_t skyboxTexture, int width, int height);
 
 	private:
 		uint32_t m_Program = 0;

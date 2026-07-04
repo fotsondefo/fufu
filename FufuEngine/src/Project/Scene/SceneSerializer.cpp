@@ -47,6 +47,13 @@ namespace Fufu {
 			{ "resetOnMove",     rs.resetOnMove }
 		};
 
+		const EnvironmentSettings& env = m_Scene->getEnvironment();
+		root["environment"] = {
+			{ "useSkybox",         env.useSkybox },
+			{ "skyboxTexturePath", env.skyboxTexturePath },
+			{ "skyboxIntensity",   env.skyboxIntensity }
+		};
+
 		root["entities"] = json::array();
 
 		auto& reg = m_Scene->m_Registry;
@@ -116,6 +123,15 @@ namespace Fufu {
 			rs.exposure        = rsJson.value("exposure", rs.exposure);
 			rs.taaBlendFactor  = rsJson.value("taaBlendFactor", rs.taaBlendFactor);
 			rs.resetOnMove     = rsJson.value("resetOnMove", rs.resetOnMove);
+		}
+
+		if (root.contains("environment"))
+		{
+			const auto& envJson = root.at("environment");
+			EnvironmentSettings& env = m_Scene->getEnvironment();
+			env.useSkybox         = envJson.value("useSkybox", env.useSkybox);
+			env.skyboxTexturePath = envJson.value("skyboxTexturePath", env.skyboxTexturePath);
+			env.skyboxIntensity   = envJson.value("skyboxIntensity", env.skyboxIntensity);
 		}
 
 		// id (tel qu'écrit dans le fichier) -> entité nouvellement créée.

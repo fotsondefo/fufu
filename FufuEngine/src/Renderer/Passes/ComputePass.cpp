@@ -72,6 +72,11 @@ layout(std430, binding = 7) readonly buffer InstanceBuffer { Instance instances[
 layout(std430, binding = 8) readonly buffer TLASBuffer     { BVHNode tlasNodes[]; };
 layout(std430, binding = 9) readonly buffer LightBuffer    { Light lights[]; };
 
+// Binding 0 ici partage le même numéro que l'image u_Output (binding = 0 sur
+// `image2D`) : ce n'est PAS un conflit, les unités d'image et les unités de
+// texture (sampler) sont deux espaces de binding distincts en GLSL/OpenGL.
+layout(binding = 0) uniform sampler2D u_Skybox;
+
 layout(std140, binding = 4) uniform CameraBlock {
     vec4  camPosition;
     vec4  camForward;
@@ -97,6 +102,8 @@ layout(std140, binding = 5) uniform FrameBlock {
     int   aaMode;         // 0=None, 1=SSAA, 2=TAA, 3=FXAA
     int   taaFrameIndex;  // dédié au TAA : incrémente à chaque frame, indépendamment du RenderMode
     float taaBlendFactor;
+    int   hasSkybox;       // 1 = échantillonner u_Skybox, 0 = dégradé de ciel procédural
+    float skyboxIntensity;
 };
 
 // ---- RNG (PCG hash) ----
@@ -406,6 +413,20 @@ float fresnel(float cosTheta, float f0) {
     return f0 + (1.0 - f0) * pow(1.0 - cosTheta, 5.0);
 }
 
+// Couleur vue par un rayon qui ne touche aucune géométrie : soit une texture
+// HDRI équirectangulaire (mapping longitude/latitude standard), soit le
+// dégradé de ciel procédural existant si aucun skybox n'est configuré.
+vec3 sampleSky(vec3 dir) {
+    if (hasSkybox == 1) {
+        float u = atan(dir.z, dir.x) * (1.0 / 6.28318530718) + 0.5;
+        float v = acos(clamp(dir.y, -1.0, 1.0)) * (1.0 / 3.14159265359);
+        return texture(u_Skybox, vec2(u, v)).rgb * skyboxIntensity;
+    }
+
+    float t = 0.5 * (dir.y + 1.0);
+    return mix(vec3(1.0), vec3(0.5, 0.7, 1.0), t);
+}
+
 // ---- Path tracing ----
 vec3 tracePath(Ray ray, inout uint seed) {
     vec3 radiance    = vec3(0.0);
@@ -415,10 +436,7 @@ vec3 tracePath(Ray ray, inout uint seed) {
         HitInfo hit = intersectScene(ray);
 
         if (!hit.hit) {
-            // Environnement simple à ciel gradient
-            float t   = 0.5 * (ray.dir.y + 1.0);
-            vec3  sky = mix(vec3(1.0), vec3(0.5, 0.7, 1.0), t);
-            radiance += throughput * sky;
+            radiance += throughput * sampleSky(ray.dir);
             break;
         }
 
@@ -539,9 +557,7 @@ vec3 traceRayTraced(Ray ray) {
         HitInfo hit = intersectScene(ray);
 
         if (!hit.hit) {
-            float t   = 0.5 * (ray.dir.y + 1.0);
-            vec3  sky = mix(vec3(1.0), vec3(0.5, 0.7, 1.0), t);
-            radiance += throughput * sky;
+            radiance += throughput * sampleSky(ray.dir);
             break;
         }
 
@@ -702,7 +718,7 @@ void main() {
 	}
 
 	void ComputePass::execute(const GPUScene& scene, const GPUCamera& camera, const GPUFrameData& frameData,
-		uint32_t outputTexture, uint32_t accumTexture, int width, int height)
+		uint32_t outputTexture, uint32_t accumTexture, uint32_t skyboxTexture, int width, int height)
 	{
 		glBindBuffer(GL_UNIFORM_BUFFER, m_CameraUBO);
 		glBufferData(GL_UNIFORM_BUFFER, sizeof(GPUCamera), &camera, GL_DYNAMIC_DRAW);
@@ -714,6 +730,9 @@ void main() {
 
 		glBindImageTexture(0, outputTexture, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
 		glBindImageTexture(1, accumTexture, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
+
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, skyboxTexture);
 
 		scene.bind();
 

@@ -10,7 +10,9 @@ namespace Fufu
 		int            width = 0;
 		int            height = 0;
 		int            channels = 0;
-		unsigned char* pixels = nullptr; // Données brutes stb_image
+		bool           isHDR = false;        // .hdr : floatPixels rempli plutÃ´t que pixels
+		unsigned char* pixels = nullptr;     // LDR : donnï¿½es brutes stb_image (8 bits)
+		float*         floatPixels = nullptr; // HDR : donnï¿½es brutes stb_image (32 bits flottant)
 	};
 
 	class TextureAsset : public Asset
@@ -23,9 +25,12 @@ namespace Fufu
 		int getWidth()    const { return m_Data.width; }
 		int getHeight()   const { return m_Data.height; }
 		int getChannels() const { return m_Data.channels; }
+		bool isHDR()      const { return m_Data.isHDR; }
 
-		// Pointeur vers les pixels bruts (valide tant que l'asset est Loaded)
-		const unsigned char* getPixels() const { return m_Data.pixels; }
+		// Pointeur vers les pixels bruts (valide tant que l'asset est Loaded).
+		// Utiliser getPixels() si !isHDR(), getFloatPixels() si isHDR().
+		const unsigned char* getPixels()      const { return m_Data.pixels; }
+		const float*         getFloatPixels() const { return m_Data.floatPixels; }
 
 	private:
 		TextureData m_Data;

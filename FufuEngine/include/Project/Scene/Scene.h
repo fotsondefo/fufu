@@ -3,6 +3,7 @@
 #include <entt/entt.hpp>
 #include "Project/Entity.h"
 #include "Renderer/RenderSettings.h"
+#include "Renderer/EnvironmentSettings.h"
 
 namespace Fufu
 {
@@ -44,10 +45,17 @@ namespace Fufu
 		RenderSettings&       getRenderSettings()       { return m_RenderSettings; }
 		const RenderSettings& getRenderSettings() const { return m_RenderSettings; }
 
+		// Environnement (skybox) de cette scène : lu directement par Renderer
+		// à chaque frame (pas de mirroring comme RenderSettings, puisque
+		// Renderer::renderScene reçoit déjà la Scene en paramètre).
+		EnvironmentSettings&       getEnvironment()       { return m_Environment; }
+		const EnvironmentSettings& getEnvironment() const { return m_Environment; }
+
 	private:
 		entt::registry m_Registry;
 		std::string    m_Name = "Untitled";
 		RenderSettings m_RenderSettings;
+		EnvironmentSettings m_Environment;
 
 		friend class Entity;
 		friend class SceneSerializer;

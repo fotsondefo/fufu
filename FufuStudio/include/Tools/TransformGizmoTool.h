@@ -3,6 +3,7 @@
 #include "IEditorTool.h"
 #include "EditorState.h"
 #include "Helpers/FontIcons.h"
+#include "Helpers/MeshPicking.h"
 #include "Commands/CommandHistory.h"
 #include "Commands/CompositeCommand.h"
 #include "Commands/ComponentCommands.h"
@@ -62,29 +63,17 @@ namespace FufuStudio
 
 		void onViewportOverlay(EditorState& state) override
 		{
-			if (state.selection.empty())
-				return;
-
-			Fufu::Entity primary = state.selection.primary();
-			if (!primary || !primary.isValid() || !primary.hasComponent<Fufu::TransformComponent>())
-				return;
-
 			auto scene = state.getActiveScene();
 			if (!scene) return;
 
 			Fufu::Entity cam = scene->getPrimaryCamera();
 			if (!cam) return;
 
-			ImGuizmo::BeginFrame();
-			ImGuizmo::SetOrthographic(false);
-			ImGuizmo::SetDrawlist();
-
 			// Zone de la vraie IMAGE rendue (pas la fenêtre du panneau, qui
-			// inclut sa propre barre de titre) : sinon le gizmo se désynchronise
-			// visuellement de ce qui est affiché.
+			// inclut sa propre barre de titre) : sinon le gizmo (et le pick) se
+			// désynchronise visuellement de ce qui est affiché.
 			ImVec2 imagePos = ImVec2(state.viewportPos.x, state.viewportPos.y);
 			ImVec2 imageSize = ImVec2(state.viewportSize.x, state.viewportSize.y);
-			ImGuizmo::SetRect(imagePos.x, imagePos.y, imageSize.x, imageSize.y);
 
 			// Matrices caméra
 			auto& camTransform = cam.getComponent<Fufu::TransformComponent>();
@@ -97,6 +86,51 @@ namespace FufuStudio
 			// niveau de l'affichage de la texture (UV inversé dans ImGui::Image,
 			// voir ViewportPanel). Appliquer un flip ici en plus désynchronise
 			// la position projetée du gizmo par rapport à l'objet réellement affiché.
+
+			// Sélection d'objet : clic gauche dans le viewport, sauf s'il atterrit
+			// sur le gizmo lui-même (le manipuler ne doit pas aussi changer la
+			// sélection). ImGuizmo::IsOver() reflète le Manipulate() de LA frame
+			// précédente — décalage d'une frame sans conséquence pratique.
+			bool clickOnGizmo = !state.selection.empty() && ImGuizmo::IsOver();
+			if (state.viewportHovered && !clickOnGizmo && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+			{
+				ImVec2 mouse = ImGui::GetMousePos();
+				glm::vec2 uv = {
+					(mouse.x - imagePos.x) / imageSize.x,
+					(mouse.y - imagePos.y) / imageSize.y
+				};
+
+				if (uv.x >= 0.f && uv.x <= 1.f && uv.y >= 0.f && uv.y <= 1.f)
+				{
+					auto hit = pickEntity(*scene, proj * view, uv);
+					if (ImGui::GetIO().KeyCtrl)
+					{
+						if (hit) state.selection.toggle(*hit);
+					}
+					else if (hit)
+					{
+						state.selection.select(*hit);
+					}
+					else
+					{
+						// Clic dans le vide : désélectionne, comme dans la
+						// plupart des éditeurs 3D.
+						state.selection.clear();
+					}
+				}
+			}
+
+			if (state.selection.empty())
+				return;
+
+			Fufu::Entity primary = state.selection.primary();
+			if (!primary || !primary.isValid() || !primary.hasComponent<Fufu::TransformComponent>())
+				return;
+
+			ImGuizmo::BeginFrame();
+			ImGuizmo::SetOrthographic(false);
+			ImGuizmo::SetDrawlist();
+			ImGuizmo::SetRect(imagePos.x, imagePos.y, imageSize.x, imageSize.y);
 
 			// Le gizmo se positionne sur l'entité "primaire" (pivot du groupe).
 			auto& primaryTransform = primary.getComponent<Fufu::TransformComponent>();

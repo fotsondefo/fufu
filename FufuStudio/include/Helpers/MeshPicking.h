@@ -1,9 +1,11 @@
 #pragma once
 
 #include <Project/Entity.h>
+#include <Project/Scene/Scene.h>
 #include <Project/Assets/MeshAsset.h>
 #include <imgui.h>
 #include <glm/glm.hpp>
+#include <limits>
 #include <optional>
 
 namespace FufuStudio
@@ -13,6 +15,10 @@ namespace FufuStudio
 		bool hit = false;
 		std::size_t faceIndex = 0;
 		glm::vec3 worldPosition{};
+		// clip.w du point touché (voir pickMesh) : comparable entre plusieurs
+		// meshes/entités tant qu'ils partagent le même viewProj, ce qui permet
+		// à pickEntity() de garder le hit le plus proche tous meshes confondus.
+		float depth = std::numeric_limits<float>::max();
 	};
 
 	// Pick approximatif en espace écran (utilisé par ModelingTool et
@@ -30,4 +36,11 @@ namespace FufuStudio
 
 	// Résout le MeshAsset référencé par le MeshComponent de l'entité (projet actif).
 	std::shared_ptr<Fufu::MeshAsset> getMeshAssetForEntity(Fufu::Entity entity);
+
+	// Sélection d'objet dans le Viewport : cherche, parmi toutes les entités
+	// (Transform+Mesh) de la scène, celle dont un triangle est le plus proche
+	// sous le point cliqué. Contrairement à pickMesh (une seule entité, déjà
+	// sélectionnée, utilisé par Model/Sculpt pour du pick de face), celui-ci
+	// parcourt toute la scène pour déterminer QUELLE entité cliquer sélectionne.
+	std::optional<Fufu::Entity> pickEntity(Fufu::Scene& scene, const glm::mat4& viewProj, glm::vec2 uv);
 }

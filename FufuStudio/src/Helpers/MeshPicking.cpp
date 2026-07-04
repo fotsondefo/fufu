@@ -46,6 +46,7 @@ namespace FufuStudio
 				result.hit = true;
 				result.faceIndex = i / 3;
 				result.worldPosition = w0 * worldA + w1 * worldB + w2 * worldC;
+				result.depth = depth;
 			}
 		}
 
@@ -75,5 +76,32 @@ namespace FufuStudio
 		if (!pm.hasProject()) return nullptr;
 
 		return pm.getCurrentProject().getAssetManager().getMesh(mesh.meshPath);
+	}
+
+	std::optional<Fufu::Entity> pickEntity(Fufu::Scene& scene, const glm::mat4& viewProj, glm::vec2 uv)
+	{
+		Fufu::Entity best;
+		float bestDepth = std::numeric_limits<float>::max();
+
+		scene.each<Fufu::TransformComponent, Fufu::MeshComponent>(
+			[&](entt::entity handle, Fufu::TransformComponent& transform, Fufu::MeshComponent& /*meshComp*/)
+		{
+			Fufu::Entity entity(handle, &scene);
+			auto meshAsset = getMeshAssetForEntity(entity);
+			if (!meshAsset) return;
+
+			glm::mat4 model = transform.getTransform();
+			for (const Fufu::SubMesh& sub : meshAsset->getSubMeshes())
+			{
+				MeshPickResult pick = pickMesh(sub, model, viewProj, uv);
+				if (pick.hit && pick.depth < bestDepth)
+				{
+					bestDepth = pick.depth;
+					best = entity;
+				}
+			}
+		});
+
+		return best.isValid() ? std::optional<Fufu::Entity>(best) : std::nullopt;
 	}
 }

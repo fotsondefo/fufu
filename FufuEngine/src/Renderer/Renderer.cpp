@@ -3,6 +3,9 @@
 #include "Renderer/Renderer.h"
 #include "Project/Components.h"
 #include "Application/Application.h"
+#include <algorithm>
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include <stb_image_write.h>
 
 namespace Fufu
 {
@@ -34,6 +37,7 @@ namespace Fufu
 		glDeleteBuffers(1, &m_QuadVBO);
 
 		m_GPUScene.shutdown();
+		m_Skybox.shutdown();
 		m_ComputePass.shutdown();
 		m_FXAAPass.shutdown();
 	}
@@ -119,6 +123,9 @@ namespace Fufu
 		gpuCam.aspectRatio = static_cast<float>(m_Width) / static_cast<float>(m_Height);
 		gpuCam.nearPlane = camComponent.nearPlane;
 
+		auto& am = Fufu::Application::get().getProjectManager().getCurrentProject().getAssetManager();
+		m_Skybox.update(scene.getEnvironment(), am);
+
 		// Frame data
 		GPUFrameData frameData;
 		frameData.frameIndex = (m_Settings.mode == RenderMode::Accumulation)
@@ -135,8 +142,11 @@ namespace Fufu
 		frameData.aaMode = static_cast<int>(m_Settings.aaMode);
 		frameData.taaFrameIndex = m_TAAFrameIndex;
 		frameData.taaBlendFactor = m_Settings.taaBlendFactor;
+		frameData.hasSkybox = m_Skybox.isActive() ? 1 : 0;
+		frameData.skyboxIntensity = scene.getEnvironment().skyboxIntensity;
 
-		m_ComputePass.execute(m_GPUScene, gpuCam, frameData, m_OutputTexture, m_AccumTexture, m_Width, m_Height);
+		m_ComputePass.execute(m_GPUScene, gpuCam, frameData, m_OutputTexture, m_AccumTexture,
+			m_Skybox.getTextureID(), m_Width, m_Height);
 
 		if (m_Settings.aaMode == AAMode::FXAA)
 			m_FXAAPass.execute(m_OutputTexture, m_QuadVAO, m_Width, m_Height);
@@ -199,6 +209,32 @@ namespace Fufu
 
 		glBindTexture(GL_TEXTURE_2D, m_FXAAPass.getOutputTexture());
 		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, m_Width, m_Height, GL_RGBA, GL_FLOAT, s_ClearBuffer.data());
+	}
+
+	bool Renderer::exportImage(const std::filesystem::path& path) const
+	{
+		if (m_Width <= 0 || m_Height <= 0) return false;
+
+		std::vector<float> pixels(static_cast<std::size_t>(m_Width) * static_cast<std::size_t>(m_Height) * 4);
+
+		glBindTexture(GL_TEXTURE_2D, getOutputTextureID());
+		glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_FLOAT, pixels.data());
+
+		std::vector<unsigned char> bytes(pixels.size());
+		for (std::size_t i = 0; i < pixels.size(); ++i)
+			bytes[i] = static_cast<unsigned char>(std::clamp(pixels[i], 0.f, 1.f) * 255.f + 0.5f);
+
+		// La texture suit la convention OpenGL (ligne 0 = bas de l'image, voir
+		// le calcul de `uv` dans le compute shader) alors qu'un PNG attend sa
+		// ligne 0 en haut : flip vertical à l'écriture pour matcher ce que
+		// l'utilisateur voit réellement dans le viewport.
+		stbi_flip_vertically_on_write(1);
+		bool ok = stbi_write_png(path.string().c_str(), m_Width, m_Height, 4, bytes.data(), m_Width * 4) != 0;
+
+		if (!ok)
+			FUFU_ERROR("Renderer: failed to export image to '{}'", path.string());
+
+		return ok;
 	}
 
 	bool Renderer::sceneNeedsUpdate(Scene& /*scene*/)

@@ -1,5 +1,6 @@
 #include "Panels/RendererSettingsPanel.h"
 #include "Helpers/FontIcons.h"
+#include "Helpers/AssetDrop.h"
 #include <imgui.h>
 
 namespace FufuStudio 
@@ -79,6 +80,34 @@ namespace FufuStudio
 		ImGui::Spacing();
 		ImGui::SeparatorText("Post-process");
 		if (ImGui::SliderFloat("Exposure", &settings.exposure, 0.1f, 10.f)) changed = true;
+
+		ImGui::Spacing();
+		ImGui::SeparatorText("Environment");
+		if (auto scene = state.getActiveScene())
+		{
+			auto& env = scene->getEnvironment();
+
+			if (ImGui::Checkbox("Use Skybox", &env.useSkybox))
+				m_Renderer.resetAccumulation();
+
+			std::string label = env.skyboxTexturePath.empty() ? "(none)" : env.skyboxTexturePath;
+			ImGui::TextDisabled("%s", label.c_str());
+
+			ImGui::Button(ICON_FA_FILE_IMAGE_O " Drop HDRI texture here", ImVec2(-1, 30.f));
+			if (ImGui::BeginDragDropTarget())
+			{
+				if (auto meta = acceptAssetDrop(); meta && meta->type == Fufu::AssetType::Texture)
+				{
+					env.skyboxTexturePath = meta->sourcePath.string();
+					env.useSkybox = true;
+					m_Renderer.resetAccumulation();
+				}
+				ImGui::EndDragDropTarget();
+			}
+
+			if (ImGui::SliderFloat("Skybox Intensity", &env.skyboxIntensity, 0.f, 10.f))
+				m_Renderer.resetAccumulation();
+		}
 
 		ImGui::Spacing();
 		ImGui::SeparatorText("Camera");

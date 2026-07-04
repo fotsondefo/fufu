@@ -3,9 +3,11 @@
 #include "RenderSettings.h"
 #include "GPUBuffers.h"
 #include "GPUScene.h"
+#include "Skybox.h"
 #include "Passes/ComputePass.h"
 #include "Passes/FXAAPass.h"
 #include "Project/Scene/Scene.h"
+#include <filesystem>
 
 namespace Fufu
 {
@@ -36,6 +38,12 @@ namespace Fufu
 		void resetAccumulation();
 
 		int getAccumulatedFrames() const { return m_FrameIndex; }
+
+		// Écrit l'image actuellement affichée (voir getOutputTextureID) dans un
+		// PNG 8 bits. L'image de sortie est déjà tone-mappée/gamma-corrigée par
+		// le compute shader, donc pas de retraitement nécessaire ici — juste
+		// une lecture GPU->CPU et une conversion float[0,1] -> uint8.
+		bool exportImage(const std::filesystem::path& path) const;
 
 		// Texture à afficher : la sortie du FXAAPass si le mode FXAA est actif
 		// (post-processée), m_OutputTexture sinon.
@@ -70,6 +78,7 @@ namespace Fufu
 		uint32_t m_QuadVBO = 0;
 
 		GPUScene    m_GPUScene;
+		Skybox      m_Skybox;
 		ComputePass m_ComputePass;
 		FXAAPass    m_FXAAPass;
 
