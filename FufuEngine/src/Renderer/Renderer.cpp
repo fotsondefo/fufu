@@ -44,13 +44,24 @@ struct BVHNode {
     vec4 boundsMax;
     int  left;
     int  right;
-    int  firstTri;
+    int  firstTri;   // feuille BLAS : triangle. feuille TLAS : instance.
     int  triCount;
 };
 
-layout(std430, binding = 2) readonly buffer TriangleBuffer { Triangle triangles[]; };
+struct Instance {
+    mat4 transform;
+    mat4 invTransform;
+    int  materialIndex;
+    int  blasNodeOffset;
+    int  blasTriOffset;
+    int  _pad;
+};
+
+layout(std430, binding = 2) readonly buffer TriangleBuffer { Triangle triangles[]; };   // BLAS, espace local
 layout(std430, binding = 3) readonly buffer MaterialBuffer { Material materials[]; };
-layout(std430, binding = 6) readonly buffer BVHBuffer { BVHNode bvhNodes[]; };
+layout(std430, binding = 6) readonly buffer BLASNodeBuffer { BVHNode blasNodes[]; };
+layout(std430, binding = 7) readonly buffer InstanceBuffer { Instance instances[]; };
+layout(std430, binding = 8) readonly buffer TLASBuffer     { BVHNode tlasNodes[]; };
 
 layout(std140, binding = 4) uniform CameraBlock {
     vec4  camPosition;
@@ -139,34 +150,94 @@ bool intersectAABB(Ray ray, vec3 bmin, vec3 bmax, out float tNear) {
     return tExit >= max(tEnter, 0.0);
 }
 
-// Parcours BVH itératif (pile fixe — largement suffisant, un arbre équilibré
-// sur des dizaines de milliers de triangles reste bien en-dessous de 64 de profondeur).
+// Parcours du BLAS d'UNE instance (espace local à cette instance). Les
+// indices left/right/firstTri stockés dans les nœuds sont RELATIFS au bloc du
+// BLAS (0-based) : on ajoute nodeOffset seulement au moment de lire le nœud,
+// pour que la même géométrie (même BLAS) puisse être traversée par n'importe
+// quelle instance qui la référence — c'est ça, l'instancing.
+HitInfo intersectBLAS(Ray ray, int nodeOffset, int triOffset) {
+    HitInfo closest;
+    closest.hit = false;
+    closest.t   = 1e30;
+
+    int stack[32];
+    int stackPtr = 0;
+    stack[stackPtr++] = 0; // racine du BLAS (index local)
+
+    while (stackPtr > 0) {
+        int localIdx = stack[--stackPtr];
+        BVHNode node = blasNodes[nodeOffset + localIdx];
+
+        float tNear;
+        if (!intersectAABB(ray, node.boundsMin.xyz, node.boundsMax.xyz, tNear)) continue;
+        if (tNear > closest.t) continue;
+
+        if (node.triCount > 0) {
+            for (int i = 0; i < node.triCount; ++i) {
+                HitInfo h = intersectTriangle(ray, triangles[triOffset + node.firstTri + i]);
+                if (h.hit && h.t < closest.t)
+                    closest = h;
+            }
+        } else {
+            stack[stackPtr++] = node.left;
+            stack[stackPtr++] = node.right;
+        }
+    }
+
+    return closest;
+}
+
+// Parcours du TLAS (espace monde) : pour chaque instance candidate, transforme
+// le rayon en espace local avant de descendre dans son BLAS, puis retransforme
+// le résultat (distance + normale) en espace monde.
 HitInfo intersectScene(Ray ray) {
     HitInfo closest;
     closest.hit = false;
     closest.t   = 1e30;
 
-    // Scène vide : le nœud racine "sentinelle" (triCount=0, left=right=-1)
-    // n'est pas un vrai nœud interne, il ne faut pas pousser ses enfants.
+    // triangleCount réutilisé comme "nombre d'instances" côté C++ : sert
+    // juste à éviter de descendre dans un TLAS vide (nœud racine sentinelle).
     if (triangleCount <= 0) return closest;
 
     int stack[64];
     int stackPtr = 0;
-    stack[stackPtr++] = 0; // racine
+    stack[stackPtr++] = 0; // racine du TLAS
 
     while (stackPtr > 0) {
         int nodeIdx = stack[--stackPtr];
-        BVHNode node = bvhNodes[nodeIdx];
+        BVHNode node = tlasNodes[nodeIdx];
 
         float tNear;
         if (!intersectAABB(ray, node.boundsMin.xyz, node.boundsMax.xyz, tNear)) continue;
-        if (tNear > closest.t) continue; // un hit déjà trouvé est plus proche que cette boîte
+        if (tNear > closest.t) continue;
 
         if (node.triCount > 0) {
+            // Feuille du TLAS : firstTri/triCount indexent des INSTANCES ici
             for (int i = 0; i < node.triCount; ++i) {
-                HitInfo h = intersectTriangle(ray, triangles[node.firstTri + i]);
-                if (h.hit && h.t < closest.t)
+                Instance inst = instances[node.firstTri + i];
+
+                vec3 localOrigin = (inst.invTransform * vec4(ray.origin, 1.0)).xyz;
+                vec3 localDirRaw = (inst.invTransform * vec4(ray.dir, 0.0)).xyz;
+                float dirLen = length(localDirRaw);
+                if (dirLen < 1e-8) continue;
+
+                Ray localRay;
+                localRay.origin = localOrigin;
+                localRay.dir    = localDirRaw / dirLen;
+
+                HitInfo h = intersectBLAS(localRay, inst.blasNodeOffset, inst.blasTriOffset);
+                if (!h.hit) continue;
+
+                // t était mesuré en espace local (rayon normalisé localement) :
+                // reconvertir en distance monde avant de comparer.
+                float worldT = h.t / dirLen;
+                if (worldT < closest.t) {
                     closest = h;
+                    closest.t = worldT;
+                    closest.materialIndex = inst.materialIndex;
+                    mat3 normalMat = mat3(transpose(inst.invTransform));
+                    closest.normal = normalize(normalMat * h.normal);
+                }
             }
         } else {
             stack[stackPtr++] = node.left;
@@ -363,7 +434,9 @@ void main() {
 		glDeleteProgram(m_BlitProgram);
 		glDeleteBuffers(1, &m_TriangleSSBO);
 		glDeleteBuffers(1, &m_MaterialSSBO);
-		glDeleteBuffers(1, &m_BVHSSBO);
+		glDeleteBuffers(1, &m_BLASNodeSSBO);
+		glDeleteBuffers(1, &m_InstanceSSBO);
+		glDeleteBuffers(1, &m_TLASNodeSSBO);
 		glDeleteBuffers(1, &m_CameraUBO);
 		glDeleteBuffers(1, &m_FrameDataUBO);
 		glDeleteVertexArrays(1, &m_QuadVAO);
@@ -405,7 +478,9 @@ void main() {
 	{
 		glGenBuffers(1, &m_TriangleSSBO);
 		glGenBuffers(1, &m_MaterialSSBO);
-		glGenBuffers(1, &m_BVHSSBO);
+		glGenBuffers(1, &m_BLASNodeSSBO);
+		glGenBuffers(1, &m_InstanceSSBO);
+		glGenBuffers(1, &m_TLASNodeSSBO);
 		glGenBuffers(1, &m_CameraUBO);
 		glGenBuffers(1, &m_FrameDataUBO);
 	}
@@ -442,17 +517,76 @@ void main() {
 	{
 		m_Triangles.clear();
 		m_Materials.clear();
+		m_BLASNodes.clear();
+		m_Instances.clear();
 
-		// Map UUID material ? index GPU
-		std::unordered_map<uint32_t, int> matIndexMap;
+		auto& am = Fufu::Application::get().getProjectManager().getCurrentProject().getAssetManager();
 
+		// Cache BLAS par chemin de mesh : construit une seule fois par mesh
+		// unique, même si N entités le référencent — c'est l'instancing.
+		// Reconstruit à chaque frame comme le reste de l'upload (cohérent avec
+		// le sculpt/extrude qui mutent le mesh en mémoire), mais désormais le
+		// coût de build ET la mémoire GPU sont O(meshes uniques), plus
+		// O(instances × triangles).
+		struct BLASRef { int nodeOffset; int triOffset; };
+		std::unordered_map<std::string, BLASRef> blasCache;
+
+		auto getOrBuildBLAS = [&](const std::string& path) -> const BLASRef*
+		{
+			auto found = blasCache.find(path);
+			if (found != blasCache.end())
+				return &found->second;
+
+			auto meshAsset = am.getMesh(path);
+			if (!meshAsset || meshAsset->getSubMeshCount() == 0)
+				return nullptr;
+
+			std::vector<GPUTriangle> localTris;
+			for (const auto& sub : meshAsset->getSubMeshes())
+			{
+				for (std::size_t i = 0; i + 2 < sub.indices.size(); i += 3)
+				{
+					const Vertex& a = sub.vertices[sub.indices[i]];
+					const Vertex& b = sub.vertices[sub.indices[i + 1]];
+					const Vertex& c = sub.vertices[sub.indices[i + 2]];
+
+					GPUTriangle tri{};
+					tri.v0 = glm::vec4(a.position, 0.f);
+					tri.v1 = glm::vec4(b.position, 0.f);
+					tri.v2 = glm::vec4(c.position, 0.f);
+					tri.n0 = glm::vec4(a.normal, 0.f);
+					tri.n1 = glm::vec4(b.normal, 0.f);
+					tri.n2 = glm::vec4(c.normal, 0.f);
+					tri.uv0 = a.uv;
+					tri.uv1 = b.uv;
+					tri.uv2 = c.uv;
+					tri.materialIndex = 0; // le matériau vient de l'instance, pas du BLAS partagé
+					localTris.push_back(tri);
+				}
+			}
+
+			if (localTris.empty())
+				return nullptr;
+
+			std::vector<GPUBVHNode> localNodes = BVHBuilder::build(localTris);
+
+			BLASRef ref{ static_cast<int>(m_BLASNodes.size()), static_cast<int>(m_Triangles.size()) };
+			m_BLASNodes.insert(m_BLASNodes.end(), localNodes.begin(), localNodes.end());
+			m_Triangles.insert(m_Triangles.end(), localTris.begin(), localTris.end());
+
+			return &blasCache.emplace(path, ref).first->second;
+		};
+
+		// Meshes "classiques" : le même BLAS peut être partagé par plusieurs instances.
 		scene.each<TransformComponent, MeshComponent, MaterialComponent>(
 			[&](entt::entity /*e*/,
 				TransformComponent& transform,
 				MeshComponent& meshComp,
 				MaterialComponent& matComp)
 		{
-			// Material
+			const BLASRef* blas = getOrBuildBLAS(meshComp.meshPath);
+			if (!blas) return;
+
 			int matIdx = static_cast<int>(m_Materials.size());
 			GPUMaterial gpuMat;
 			gpuMat.albedo = matComp.albedo;
@@ -463,57 +597,38 @@ void main() {
 			gpuMat.albedoTexIdx = -1;
 			m_Materials.push_back(gpuMat);
 
-			// Mesh
-			auto& am = Fufu::Application::get().getProjectManager().getCurrentProject().getAssetManager();
-			auto meshAsset = am.getMesh(meshComp.meshPath);
-			if (!meshAsset) return;
-
-			glm::mat4 model = transform.getTransform();
-			glm::mat3 normalMat = glm::transpose(glm::inverse(glm::mat3(model)));
-
-			for (const auto& sub : meshAsset->getSubMeshes())
-			{
-				for (size_t i = 0; i + 2 < sub.indices.size(); i += 3)
-				{
-					const Vertex& a = sub.vertices[sub.indices[i]];
-					const Vertex& b = sub.vertices[sub.indices[i + 1]];
-					const Vertex& c = sub.vertices[sub.indices[i + 2]];
-
-					GPUTriangle tri;
-					glm::vec4 tv = model * glm::vec4(a.position.x, a.position.y, a.position.z, 1.f);
-					tri.v0 = glm::vec4(tv.x, tv.y, tv.z, 0.f);
-
-					tv = model * glm::vec4(b.position.x, b.position.y, b.position.z, 1.f);
-					tri.v1 = glm::vec4(tv.x, tv.y, tv.z, 0.f);
-					
-					tv = model * glm::vec4(c.position.x, c.position.y, c.position.z, 1.f);
-					tri.v2 = glm::vec4(tv.x, tv.y, tv.z, 0.f);
-					
-					tri.n0 = glm::vec4(normalMat * a.normal, 0.f);
-					tri.n1 = glm::vec4(normalMat * b.normal, 0.f);
-					tri.n2 = glm::vec4(normalMat * c.normal, 0.f);
-					tri.uv0 = a.uv;
-					tri.uv1 = b.uv;
-					tri.uv2 = c.uv;
-					tri.materialIndex = matIdx;
-					m_Triangles.push_back(tri);
-				}
-			}
+			GPUInstance inst{};
+			inst.transform = transform.getTransform();
+			inst.invTransform = glm::inverse(inst.transform);
+			inst.materialIndex = matIdx;
+			inst.blasNodeOffset = blas->nodeOffset;
+			inst.blasTriOffset = blas->triOffset;
+			m_Instances.push_back(inst);
 		}
 		);
 
-		// Groom : entités ayant un Mesh (surface porteuse) ET un Groom.
-		// Génère les hair cards directement dans le même buffer de triangles —
-		// pas de shader ni de passe de rendu séparés.
+		// Groom : géométrie procédurale propre à CHAQUE entité (seed, courbure...),
+		// donc pas de partage de BLAS entre groom — mais même chemin d'instanciation
+		// que les meshes classiques (une instance, un BLAS dédié).
 		scene.each<TransformComponent, MeshComponent, GroomComponent>(
 			[&](entt::entity /*e*/,
 				TransformComponent& transform,
 				MeshComponent& meshComp,
 				GroomComponent& groom)
 		{
-			auto& am = Fufu::Application::get().getProjectManager().getCurrentProject().getAssetManager();
 			auto meshAsset = am.getMesh(meshComp.meshPath);
 			if (!meshAsset) return;
+
+			std::vector<GPUTriangle> groomTris;
+			GroomGenerator::generate(*meshAsset, groom, groomTris);
+			if (groomTris.empty()) return;
+
+			std::vector<GPUBVHNode> groomNodes = BVHBuilder::build(groomTris);
+
+			int nodeOffset = static_cast<int>(m_BLASNodes.size());
+			int triOffset = static_cast<int>(m_Triangles.size());
+			m_BLASNodes.insert(m_BLASNodes.end(), groomNodes.begin(), groomNodes.end());
+			m_Triangles.insert(m_Triangles.end(), groomTris.begin(), groomTris.end());
 
 			int matIdx = static_cast<int>(m_Materials.size());
 			GPUMaterial gpuMat;
@@ -525,20 +640,54 @@ void main() {
 			gpuMat.albedoTexIdx = -1;
 			m_Materials.push_back(gpuMat);
 
-			glm::mat4 model = transform.getTransform();
-			glm::mat3 normalMat = glm::transpose(glm::inverse(glm::mat3(model)));
-
-			GroomGenerator::generate(*meshAsset, groom, model, normalMat, matIdx, m_Triangles);
+			GPUInstance inst{};
+			inst.transform = transform.getTransform();
+			inst.invTransform = glm::inverse(inst.transform);
+			inst.materialIndex = matIdx;
+			inst.blasNodeOffset = nodeOffset;
+			inst.blasTriOffset = triOffset;
+			m_Instances.push_back(inst);
 		}
 		);
 
-		// Construit le BVH — RÉORDONNE m_Triangles en place pour que chaque
-		// feuille référence une plage contiguë. Reconstruit à chaque frame,
-		// comme le reste de l'upload : coût CPU négligeable face au gain
-		// (intersection O(log n) au lieu de O(n) par rayon, par rebond).
-		m_BVHNodes = BVHBuilder::build(m_Triangles);
+		// TLAS : une boîte englobante MONDE par instance, dérivée des 8 coins
+		// de la boîte locale de la racine de son BLAS.
+		std::vector<glm::vec3> instBoundsMin(m_Instances.size());
+		std::vector<glm::vec3> instBoundsMax(m_Instances.size());
 
-		// Upload triangles (post-BVH, donc dans l'ordre réordonné)
+		for (std::size_t i = 0; i < m_Instances.size(); ++i)
+		{
+			const GPUInstance& inst = m_Instances[i];
+			const GPUBVHNode& root = m_BLASNodes[static_cast<std::size_t>(inst.blasNodeOffset)];
+
+			glm::vec3 lmin = glm::vec3(root.boundsMin);
+			glm::vec3 lmax = glm::vec3(root.boundsMax);
+
+			glm::vec3 worldMin(1e30f), worldMax(-1e30f);
+			for (int c = 0; c < 8; ++c)
+			{
+				glm::vec3 corner(
+					(c & 1) ? lmax.x : lmin.x,
+					(c & 2) ? lmax.y : lmin.y,
+					(c & 4) ? lmax.z : lmin.z);
+				glm::vec3 worldCorner = glm::vec3(inst.transform * glm::vec4(corner, 1.f));
+				worldMin = glm::min(worldMin, worldCorner);
+				worldMax = glm::max(worldMax, worldCorner);
+			}
+
+			instBoundsMin[i] = worldMin;
+			instBoundsMax[i] = worldMax;
+		}
+
+		std::vector<int> order;
+		m_TLASNodes = BVHBuilder::buildFromBounds(instBoundsMin, instBoundsMax, order);
+
+		std::vector<GPUInstance> reorderedInstances(m_Instances.size());
+		for (std::size_t i = 0; i < order.size(); ++i)
+			reorderedInstances[i] = m_Instances[static_cast<std::size_t>(order[i])];
+		m_Instances = std::move(reorderedInstances);
+
+		// Upload triangles (BLAS, espace local, concaténés par mesh unique)
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_TriangleSSBO);
 		glBufferData(GL_SHADER_STORAGE_BUFFER,
 			m_Triangles.size() * sizeof(GPUTriangle),
@@ -550,16 +699,28 @@ void main() {
 			m_Materials.size() * sizeof(GPUMaterial),
 			m_Materials.data(), GL_DYNAMIC_DRAW);
 
-		// Upload BVH
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_BVHSSBO);
+		// Upload nœuds BLAS
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_BLASNodeSSBO);
 		glBufferData(GL_SHADER_STORAGE_BUFFER,
-			m_BVHNodes.size() * sizeof(GPUBVHNode),
-			m_BVHNodes.data(), GL_DYNAMIC_DRAW);
+			m_BLASNodes.size() * sizeof(GPUBVHNode),
+			m_BLASNodes.data(), GL_DYNAMIC_DRAW);
+
+		// Upload instances
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_InstanceSSBO);
+		glBufferData(GL_SHADER_STORAGE_BUFFER,
+			m_Instances.size() * sizeof(GPUInstance),
+			m_Instances.data(), GL_DYNAMIC_DRAW);
+
+		// Upload TLAS
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_TLASNodeSSBO);
+		glBufferData(GL_SHADER_STORAGE_BUFFER,
+			m_TLASNodes.size() * sizeof(GPUBVHNode),
+			m_TLASNodes.data(), GL_DYNAMIC_DRAW);
 
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
-		FUFU_TRACE("Scene uploaded: {} triangles, {} materials, {} BVH nodes",
-			m_Triangles.size(), m_Materials.size(), m_BVHNodes.size());
+		FUFU_TRACE("Scene uploaded: {} instances, {} unique BLAS triangles, {} materials",
+			m_Instances.size(), m_Triangles.size(), m_Materials.size());
 	}
 
 	// ----------------------------------------------------------------
@@ -609,7 +770,9 @@ void main() {
 		frameData.exposure = m_Settings.exposure;
 		frameData.width = m_Width;
 		frameData.height = m_Height;
-		frameData.triangleCount = static_cast<int>(m_Triangles.size());
+		// Réutilisé côté shader comme "nombre d'instances" (garde anti scène
+		// vide pour le TLAS) — voir intersectScene dans le compute shader.
+		frameData.triangleCount = static_cast<int>(m_Instances.size());
 		frameData.materialCount = static_cast<int>(m_Materials.size());
 
 		glBindBuffer(GL_UNIFORM_BUFFER, m_FrameDataUBO);
@@ -637,7 +800,9 @@ void main() {
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, m_MaterialSSBO);
 		glBindBufferBase(GL_UNIFORM_BUFFER, 4, m_CameraUBO);
 		glBindBufferBase(GL_UNIFORM_BUFFER, 5, m_FrameDataUBO);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 6, m_BVHSSBO);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 6, m_BLASNodeSSBO);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 7, m_InstanceSSBO);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 8, m_TLASNodeSSBO);
 
 		// Dispatch � groupes de 16x16
 		int gx = (m_Width + 15) / 16;

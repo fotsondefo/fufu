@@ -8,16 +8,16 @@
 
 namespace Fufu
 {
-	// Génère les triangles GPU d'un GroomComponent (hair cards procéduraux)
-	// à partir de la surface d'un MeshAsset, et les ajoute à outTriangles.
-	// Appelé depuis Renderer::uploadSceneData — voir GroomComponent pour le
-	// détail des limitations (rubans plats, pas de mèches courbes rendues
-	// individuellement, un seul sous-maillage source).
+	// Génère les triangles GPU d'un GroomComponent (hair cards procéduraux) à
+	// partir de la surface d'un MeshAsset, en ESPACE LOCAL (pas de transform
+	// appliqué ici) : le groom devient ainsi son propre petit BLAS, instancié
+	// comme n'importe quel mesh — voir Renderer::uploadSceneData. Le
+	// materialIndex de chaque triangle est laissé à 0 : la couleur du groom
+	// est portée par l'instance, pas par la géométrie partagée.
 	class GroomGenerator
 	{
 	public:
 		static void generate(const MeshAsset& mesh, const GroomComponent& groom,
-			const glm::mat4& model, const glm::mat3& normalMatrix,
-			int materialIndex, std::vector<GPUTriangle>& outTriangles);
+			std::vector<GPUTriangle>& outTriangles);
 	};
 }

@@ -16,8 +16,7 @@ namespace Fufu
 	}
 
 	void GroomGenerator::generate(const MeshAsset& mesh, const GroomComponent& groom,
-		const glm::mat4& model, const glm::mat3& normalMatrix,
-		int materialIndex, std::vector<GPUTriangle>& outTriangles)
+		std::vector<GPUTriangle>& outTriangles)
 	{
 		if (mesh.getSubMeshCount() == 0 || groom.strandCount <= 0)
 			return;
@@ -98,25 +97,20 @@ namespace Fufu
 				glm::vec3 p3 = nextPos - side * halfWidthEnd;
 
 				glm::vec3 segNormalLocal = glm::normalize(glm::cross(side, segDir));
-				glm::vec3 worldNormal = glm::normalize(normalMatrix * segNormalLocal);
 
 				auto emitTriangle = [&](const glm::vec3& a, const glm::vec3& b, const glm::vec3& c)
 				{
-					glm::vec3 wa = glm::vec3(model * glm::vec4(a, 1.f));
-					glm::vec3 wb = glm::vec3(model * glm::vec4(b, 1.f));
-					glm::vec3 wc = glm::vec3(model * glm::vec4(c, 1.f));
-
 					GPUTriangle tri{};
-					tri.v0 = glm::vec4(wa, 0.f);
-					tri.v1 = glm::vec4(wb, 0.f);
-					tri.v2 = glm::vec4(wc, 0.f);
-					tri.n0 = glm::vec4(worldNormal, 0.f);
-					tri.n1 = glm::vec4(worldNormal, 0.f);
-					tri.n2 = glm::vec4(worldNormal, 0.f);
+					tri.v0 = glm::vec4(a, 0.f);
+					tri.v1 = glm::vec4(b, 0.f);
+					tri.v2 = glm::vec4(c, 0.f);
+					tri.n0 = glm::vec4(segNormalLocal, 0.f);
+					tri.n1 = glm::vec4(segNormalLocal, 0.f);
+					tri.n2 = glm::vec4(segNormalLocal, 0.f);
 					tri.uv0 = glm::vec2(0.f);
 					tri.uv1 = glm::vec2(0.f);
 					tri.uv2 = glm::vec2(0.f);
-					tri.materialIndex = materialIndex;
+					tri.materialIndex = 0;
 					outTriangles.push_back(tri);
 				};
 

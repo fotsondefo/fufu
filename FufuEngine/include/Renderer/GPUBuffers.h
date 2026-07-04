@@ -7,8 +7,8 @@
 namespace Fufu 
 {
 
-	// Structures miroir côté CPU de ce qui est envoyé au GPU via SSBO.
-	// Alignement std430 strict — chaque champ respecte les règles d'alignement GLSL.
+	// Structures miroir cï¿½tï¿½ CPU de ce qui est envoyï¿½ au GPU via SSBO.
+	// Alignement std430 strict ï¿½ chaque champ respecte les rï¿½gles d'alignement GLSL.
 
 	struct alignas(16) GPUSphere
 	{
@@ -33,13 +33,27 @@ namespace Fufu
 		float     _pad;
 	};
 
+	// Une instance = un exemplaire d'un BLAS (mesh en espace local) avec sa
+	// propre transform et son propre matÃ©riau. blasNodeOffset/blasTriOffset
+	// pointent dans les buffers partagÃ©s BLASNodeBuffer/TriangleBuffer, qui
+	// concatÃ¨nent les BLAS de tous les meshes uniques de la scÃ¨ne.
+	struct alignas(16) GPUInstance
+	{
+		glm::mat4 transform;    // local -> monde
+		glm::mat4 invTransform; // monde -> local (pour transformer le rayon)
+		int materialIndex;
+		int blasNodeOffset;
+		int blasTriOffset;
+		int _pad;
+	};
+
 	struct alignas(16) GPUMaterial
 	{
-		glm::vec4 albedo;       // rgb = couleur, a = opacité
+		glm::vec4 albedo;       // rgb = couleur, a = opacitï¿½
 		float     metallic;
 		float     roughness;
 		float     emissive;
-		float     ior;          // Indice de réfraction (verre = 1.5)
+		float     ior;          // Indice de rï¿½fraction (verre = 1.5)
 		int       albedoTexIdx; // -1 = pas de texture
 		float     _pad[3];
 	};

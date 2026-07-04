@@ -67,9 +67,11 @@ namespace Fufu
 		uint32_t m_BlitProgram = 0;
 
 		// SSBOs
-		uint32_t m_TriangleSSBO = 0;
+		uint32_t m_TriangleSSBO = 0;  // BLAS : triangles en espace local, concaténés par mesh unique
 		uint32_t m_MaterialSSBO = 0;
-		uint32_t m_BVHSSBO = 0;
+		uint32_t m_BLASNodeSSBO = 0;  // BLAS : nœuds BVH, concaténés par mesh unique
+		uint32_t m_InstanceSSBO = 0;  // une entrée par instance (transform + réf. BLAS + matériau)
+		uint32_t m_TLASNodeSSBO = 0;  // BVH de plus haut niveau, sur les boîtes des instances
 		uint32_t m_CameraUBO = 0;
 		uint32_t m_FrameDataUBO = 0;
 
@@ -84,9 +86,11 @@ namespace Fufu
 		uint32_t m_LastSceneVersion = 0;
 
 		// Cache des donn�es GPU
-		std::vector<GPUTriangle> m_Triangles;
+		std::vector<GPUTriangle> m_Triangles;   // BLAS, espace local, concat�n�s par mesh unique
 		std::vector<GPUMaterial> m_Materials;
-		std::vector<GPUBVHNode>  m_BVHNodes;
+		std::vector<GPUBVHNode>  m_BLASNodes;   // BLAS, concat�n�s par mesh unique
+		std::vector<GPUInstance> m_Instances;
+		std::vector<GPUBVHNode>  m_TLASNodes;
 	};
 
 }
