@@ -2,6 +2,7 @@
 
 #include "RenderSettings.h"
 #include "GPUBuffers.h"
+#include "BVH.h"
 #include "Project/Scene/Scene.h"
 
 namespace Fufu 
@@ -68,6 +69,7 @@ namespace Fufu
 		// SSBOs
 		uint32_t m_TriangleSSBO = 0;
 		uint32_t m_MaterialSSBO = 0;
+		uint32_t m_BVHSSBO = 0;
 		uint32_t m_CameraUBO = 0;
 		uint32_t m_FrameDataUBO = 0;
 
@@ -84,6 +86,7 @@ namespace Fufu
 		// Cache des donn�es GPU
 		std::vector<GPUTriangle> m_Triangles;
 		std::vector<GPUMaterial> m_Materials;
+		std::vector<GPUBVHNode>  m_BVHNodes;
 	};
 
 }

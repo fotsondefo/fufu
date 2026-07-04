@@ -39,8 +39,18 @@ struct Material {
     float _pad[3];
 };
 
+struct BVHNode {
+    vec4 boundsMin;
+    vec4 boundsMax;
+    int  left;
+    int  right;
+    int  firstTri;
+    int  triCount;
+};
+
 layout(std430, binding = 2) readonly buffer TriangleBuffer { Triangle triangles[]; };
 layout(std430, binding = 3) readonly buffer MaterialBuffer { Material materials[]; };
+layout(std430, binding = 6) readonly buffer BVHBuffer { BVHNode bvhNodes[]; };
 
 layout(std140, binding = 4) uniform CameraBlock {
     vec4  camPosition;
@@ -116,16 +126,54 @@ HitInfo intersectTriangle(Ray ray, Triangle tri) {
     return info;
 }
 
+// Slab test AABB. tNear renseigné même en cas de non-hit (utilisé pour l'élagage).
+bool intersectAABB(Ray ray, vec3 bmin, vec3 bmax, out float tNear) {
+    vec3 invDir = 1.0 / ray.dir;
+    vec3 t0 = (bmin - ray.origin) * invDir;
+    vec3 t1 = (bmax - ray.origin) * invDir;
+    vec3 tsmall = min(t0, t1);
+    vec3 tbig   = max(t0, t1);
+    float tEnter = max(max(tsmall.x, tsmall.y), tsmall.z);
+    float tExit  = min(min(tbig.x, tbig.y), tbig.z);
+    tNear = tEnter;
+    return tExit >= max(tEnter, 0.0);
+}
+
+// Parcours BVH itératif (pile fixe — largement suffisant, un arbre équilibré
+// sur des dizaines de milliers de triangles reste bien en-dessous de 64 de profondeur).
 HitInfo intersectScene(Ray ray) {
     HitInfo closest;
     closest.hit = false;
     closest.t   = 1e30;
 
-    for (int i = 0; i < triangleCount; ++i) {
-        HitInfo h = intersectTriangle(ray, triangles[i]);
-        if (h.hit && h.t < closest.t)
-            closest = h;
+    // Scène vide : le nœud racine "sentinelle" (triCount=0, left=right=-1)
+    // n'est pas un vrai nœud interne, il ne faut pas pousser ses enfants.
+    if (triangleCount <= 0) return closest;
+
+    int stack[64];
+    int stackPtr = 0;
+    stack[stackPtr++] = 0; // racine
+
+    while (stackPtr > 0) {
+        int nodeIdx = stack[--stackPtr];
+        BVHNode node = bvhNodes[nodeIdx];
+
+        float tNear;
+        if (!intersectAABB(ray, node.boundsMin.xyz, node.boundsMax.xyz, tNear)) continue;
+        if (tNear > closest.t) continue; // un hit déjà trouvé est plus proche que cette boîte
+
+        if (node.triCount > 0) {
+            for (int i = 0; i < node.triCount; ++i) {
+                HitInfo h = intersectTriangle(ray, triangles[node.firstTri + i]);
+                if (h.hit && h.t < closest.t)
+                    closest = h;
+            }
+        } else {
+            stack[stackPtr++] = node.left;
+            stack[stackPtr++] = node.right;
+        }
     }
+
     return closest;
 }
 
@@ -315,6 +363,7 @@ void main() {
 		glDeleteProgram(m_BlitProgram);
 		glDeleteBuffers(1, &m_TriangleSSBO);
 		glDeleteBuffers(1, &m_MaterialSSBO);
+		glDeleteBuffers(1, &m_BVHSSBO);
 		glDeleteBuffers(1, &m_CameraUBO);
 		glDeleteBuffers(1, &m_FrameDataUBO);
 		glDeleteVertexArrays(1, &m_QuadVAO);
@@ -356,6 +405,7 @@ void main() {
 	{
 		glGenBuffers(1, &m_TriangleSSBO);
 		glGenBuffers(1, &m_MaterialSSBO);
+		glGenBuffers(1, &m_BVHSSBO);
 		glGenBuffers(1, &m_CameraUBO);
 		glGenBuffers(1, &m_FrameDataUBO);
 	}
@@ -482,7 +532,13 @@ void main() {
 		}
 		);
 
-		// Upload triangles
+		// Construit le BVH — RÉORDONNE m_Triangles en place pour que chaque
+		// feuille référence une plage contiguë. Reconstruit à chaque frame,
+		// comme le reste de l'upload : coût CPU négligeable face au gain
+		// (intersection O(log n) au lieu de O(n) par rayon, par rebond).
+		m_BVHNodes = BVHBuilder::build(m_Triangles);
+
+		// Upload triangles (post-BVH, donc dans l'ordre réordonné)
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_TriangleSSBO);
 		glBufferData(GL_SHADER_STORAGE_BUFFER,
 			m_Triangles.size() * sizeof(GPUTriangle),
@@ -494,10 +550,16 @@ void main() {
 			m_Materials.size() * sizeof(GPUMaterial),
 			m_Materials.data(), GL_DYNAMIC_DRAW);
 
+		// Upload BVH
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_BVHSSBO);
+		glBufferData(GL_SHADER_STORAGE_BUFFER,
+			m_BVHNodes.size() * sizeof(GPUBVHNode),
+			m_BVHNodes.data(), GL_DYNAMIC_DRAW);
+
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
-		FUFU_TRACE("Scene uploaded: {} triangles, {} materials",
-			m_Triangles.size(), m_Materials.size());
+		FUFU_TRACE("Scene uploaded: {} triangles, {} materials, {} BVH nodes",
+			m_Triangles.size(), m_Materials.size(), m_BVHNodes.size());
 	}
 
 	// ----------------------------------------------------------------
@@ -575,6 +637,7 @@ void main() {
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, m_MaterialSSBO);
 		glBindBufferBase(GL_UNIFORM_BUFFER, 4, m_CameraUBO);
 		glBindBufferBase(GL_UNIFORM_BUFFER, 5, m_FrameDataUBO);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 6, m_BVHSSBO);
 
 		// Dispatch � groupes de 16x16
 		int gx = (m_Width + 15) / 16;
