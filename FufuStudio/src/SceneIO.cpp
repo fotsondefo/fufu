@@ -27,6 +27,7 @@ namespace FufuStudio
 
 		state.selection.clear();
 		if (state.commandHistory) state.commandHistory->clear();
+		state.syncToActiveScene();
 		Fufu::Application::get().getRenderer().resetAccumulation();
 
 		return true;
@@ -103,6 +104,7 @@ namespace FufuStudio
 			sm.setActiveScene(scene->getName());
 			state.selection.clear();
 			if (state.commandHistory) state.commandHistory->clear();
+			state.syncToActiveScene();
 			Fufu::Application::get().getRenderer().resetAccumulation();
 			return true;
 		}

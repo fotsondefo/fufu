@@ -95,6 +95,10 @@ namespace Fufu
 		int   triangleCount;
 		int   materialCount;
 		int   lightCount;
+		int   technique; // 0 = PathTracing, 1 = RayTracing (voir Fufu::RenderTechnique)
+		int   aaMode;         // 0=None, 1=SSAA, 2=TAA, 3=FXAA (voir Fufu::AAMode)
+		int   taaFrameIndex;  // Compteur dédié au TAA : incrémente à chaque frame quel que soit le RenderMode
+		float taaBlendFactor;
 	};
 
 }

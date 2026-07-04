@@ -16,8 +16,9 @@ namespace FufuStudio
 		void drawAssetTree(EditorState& state);
 
 		std::filesystem::path m_SelectedAsset;
-		std::string m_RenameBuffer;
-		bool m_RenamingScene = false;
+		char        m_RenameBuffer[128] = {};
+		std::string m_RenamingSceneName; // quelle scène est en cours de renommage
+		bool        m_RenamingScene = false;
 	};
 
 }

@@ -23,6 +23,10 @@ namespace Fufu
 		void unloadScene(const std::string& name);
 		void unloadAll();
 
+		// Renomme une scène chargée (clé de la map + Scene::m_Name). Échoue
+		// (renvoie false) si newName est déjà pris par une autre scène chargée.
+		bool renameScene(const std::string& oldName, const std::string& newName);
+
 		void setActiveScene(const std::string& name);
 		std::shared_ptr<Scene> getActiveScene() const;
 		bool hasActiveScene() const { return m_ActiveScene != nullptr; }

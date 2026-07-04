@@ -23,9 +23,6 @@ namespace Fufu
 		// Redimensionnement viewport
 		void resize(int width, int height);
 
-		// R�cup�re la texture finale (pour affichage ImGui ou blit)
-		uint32_t getOutputTextureID() const { return m_OutputTexture; }
-
 		RenderSettings& getSettings() { return m_Settings; }
 
 		// Remet l'accumulation � z�ro (ex: cam�ra boug�e)
@@ -33,12 +30,20 @@ namespace Fufu
 
 		int getAccumulatedFrames() const { return m_FrameIndex; }
 
+		// Texture à afficher : m_FXAATexture si le mode FXAA est actif (post-processée),
+		// m_OutputTexture sinon.
+		uint32_t getOutputTextureID() const
+		{
+			return (m_Settings.aaMode == AAMode::FXAA) ? m_FXAATexture : m_OutputTexture;
+		}
+
 	private:
 		// Init OpenGL
 		void createTextures();
 		void createShaders();
 		void createSSBOs();
 		void createQuad();
+		void createFXAAResources();
 
 		// Upload scene ? GPU
 		void uploadSceneData(Scene& scene);
@@ -47,6 +52,14 @@ namespace Fufu
 		// Passes de rendu
 		void computePass();
 		void blitPass();
+
+		// Post-process FXAA : lit m_OutputTexture, écrit m_FXAATexture
+		// (ne peut pas lire/écrire la même texture dans un seul pass).
+		void fxaaPass();
+
+		// Efface la texture de sortie (scène sans caméra primaire) : sinon
+		// l'image de la scène précédente reste affichée telle quelle.
+		void clearOutput();
 
 		// Compilation shader
 		uint32_t compileShader(uint32_t type, const std::string& source);
@@ -61,10 +74,13 @@ namespace Fufu
 		// Textures
 		uint32_t m_OutputTexture = 0; // R�sultat final (RGBA32F)
 		uint32_t m_AccumTexture = 0; // Accumulation (RGBA32F)
+		uint32_t m_FXAATexture = 0; // Sortie du post-process FXAA (RGBA32F)
+		uint32_t m_FXAAFBO = 0;
 
 		// Programs OpenGL
 		uint32_t m_ComputeProgram = 0;
 		uint32_t m_BlitProgram = 0;
+		uint32_t m_FXAAProgram = 0;
 
 		// SSBOs
 		uint32_t m_TriangleSSBO = 0;  // BLAS : triangles en espace local, concaténés par mesh unique
@@ -82,6 +98,11 @@ namespace Fufu
 
 		// Accumulation
 		int      m_FrameIndex = 0;
+
+		// Compteur dédié au mode TAA : incrémente à CHAQUE frame, quel que
+		// soit le RenderMode (contrairement à m_FrameIndex, qui reste à 0 en
+		// Realtime) — c'est ce qui permet au TAA de lisser même hors accumulation.
+		int      m_TAAFrameIndex = 0;
 
 		// Version tracking pour �viter les uploads inutiles
 		uint32_t m_LastSceneVersion = 0;

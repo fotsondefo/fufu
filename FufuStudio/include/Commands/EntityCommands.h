@@ -53,8 +53,11 @@ namespace FufuStudio
 		SetupFn m_Setup;
 	};
 
-	// Duplique une entit� existante (copie Tag + Transform, comportement
-	// identique � celui qu'avait la Hierarchy avant l'introduction des commandes).
+	// Duplique une entité existante : Transform + tous les components
+	// optionnels qu'elle porte (Mesh, Material, Camera, Groom, Light, lien de
+	// prefab), et la replace comme sibling sous le même parent que la source
+	// s'il y en avait un. Ne duplique PAS les enfants (sous-arbre) — seulement
+	// l'entité elle-même.
 	class EntityDuplicateCommand : public ICommand
 	{
 	public:
@@ -65,15 +68,48 @@ namespace FufuStudio
 		{
 			std::string tag = m_Source.getComponent<Fufu::TagComponent>().tag + " (copy)";
 			m_Duplicate = m_Scene->createEntity(tag);
-			
+
 			m_Duplicate.getComponent<Fufu::TransformComponent>() = m_Source.getComponent<Fufu::TransformComponent>();
+
+			if (m_Source.hasComponent<Fufu::MeshComponent>())
+				m_Duplicate.addComponent<Fufu::MeshComponent>(m_Source.getComponent<Fufu::MeshComponent>());
+
+			if (m_Source.hasComponent<Fufu::MaterialComponent>())
+				m_Duplicate.addComponent<Fufu::MaterialComponent>(m_Source.getComponent<Fufu::MaterialComponent>());
+
+			if (m_Source.hasComponent<Fufu::CameraComponent>())
+			{
+				// Une seule caméra "primary" à la fois : la copie ne l'est
+				// jamais par défaut, pour ne pas se retrouver avec deux
+				// caméras primaires après un duplicate.
+				Fufu::CameraComponent cam = m_Source.getComponent<Fufu::CameraComponent>();
+				cam.primary = false;
+				m_Duplicate.addComponent<Fufu::CameraComponent>(cam);
+			}
+
+			if (m_Source.hasComponent<Fufu::GroomComponent>())
+				m_Duplicate.addComponent<Fufu::GroomComponent>(m_Source.getComponent<Fufu::GroomComponent>());
+
+			if (m_Source.hasComponent<Fufu::LightComponent>())
+				m_Duplicate.addComponent<Fufu::LightComponent>(m_Source.getComponent<Fufu::LightComponent>());
+
+			if (m_Source.hasComponent<Fufu::PrefabInstanceComponent>())
+				m_Duplicate.addComponent<Fufu::PrefabInstanceComponent>(m_Source.getComponent<Fufu::PrefabInstanceComponent>());
+
+			if (m_Source.hasComponent<Fufu::ParentComponent>())
+			{
+				entt::entity parentHandle = m_Source.getComponent<Fufu::ParentComponent>().parent;
+				Fufu::Entity parent(parentHandle, m_Scene.get());
+				if (parent.isValid())
+					m_Scene->setParent(m_Duplicate, parent);
+			}
 		}
 
 		void undo() override
 		{
 			if (m_Duplicate && m_Duplicate.isValid())
 				m_Scene->destroyEntity(m_Duplicate);
-			
+
 			m_Duplicate = {};
 		}
 

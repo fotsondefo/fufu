@@ -97,6 +97,10 @@ layout(std140, binding = 5) uniform FrameBlock {
     int   triangleCount;
     int   materialCount;
     int   lightCount;
+    int   technique; // 0 = PathTracing, 1 = RayTracing
+    int   aaMode;         // 0=None, 1=SSAA, 2=TAA, 3=FXAA
+    int   taaFrameIndex;  // dédié au TAA : incrémente à chaque frame, indépendamment du RenderMode
+    float taaBlendFactor;
 };
 
 // ---- RNG (PCG hash) ----
@@ -525,16 +529,120 @@ vec3 tracePath(Ray ray, inout uint seed) {
     return radiance;
 }
 
+// ---- Ray tracing classique (Whitted) ----
+// Éclairage direct déterministe (ombres dures, un seul rayon par lumière —
+// pas de sampleConeDirection/samplePointOnSphere, donc pas de bruit) ; les
+// surfaces spéculaires/transparentes continuent en réflexion/réfraction,
+// les surfaces diffuses s'arrêtent après leur éclairage direct (pas de GI
+// stochastique, remplacée par un ambiant plat pour éviter le noir pur).
+vec3 traceRayTraced(Ray ray) {
+    vec3 radiance   = vec3(0.0);
+    vec3 throughput = vec3(1.0);
+
+    for (int bounce = 0; bounce < maxBounces; ++bounce) {
+        HitInfo hit = intersectScene(ray);
+
+        if (!hit.hit) {
+            float t   = 0.5 * (ray.dir.y + 1.0);
+            vec3  sky = mix(vec3(1.0), vec3(0.5, 0.7, 1.0), t);
+            radiance += throughput * sky;
+            break;
+        }
+
+        Material mat      = materials[hit.materialIndex];
+        vec3     albedo   = mat.albedo.rgb;
+        vec3     N        = hit.normal;
+        vec3     hitPoint = ray.origin + ray.dir * hit.t;
+
+        if (mat.emissive > 0.0) {
+            radiance += throughput * albedo * mat.emissive;
+            break;
+        }
+
+        vec3 direct = vec3(0.0);
+        for (int li = 0; li < lightCount; ++li) {
+            Light light = lights[li];
+
+            vec3  Ldir;
+            float maxDist;
+            vec3  lightRadiance;
+
+            if (light.type == 0) {
+                Ldir          = light.positionOrDirection.xyz; // pas de jitter : ombre dure
+                maxDist       = 1e30;
+                lightRadiance = light.color.rgb * light.color.a;
+            } else {
+                vec3  toLight = light.positionOrDirection.xyz - hitPoint;
+                float dist    = length(toLight);
+                Ldir          = toLight / max(dist, 1e-6);
+                maxDist       = dist - 1e-3;
+                lightRadiance = light.color.rgb * light.color.a / max(dist * dist, 1e-4);
+            }
+
+            float NdotL = dot(N, Ldir);
+            if (NdotL > 0.0) {
+                Ray shadowRay;
+                shadowRay.origin = hitPoint + N * 1e-4;
+                shadowRay.dir    = Ldir;
+
+                if (!intersectSceneShadow(shadowRay, maxDist))
+                    direct += albedo * (1.0 - mat.metallic) * lightRadiance * NdotL;
+            }
+        }
+
+        // Ambiant plat minimal : pas de GI diffuse dans ce mode, donc rien
+        // n'éclairerait les zones hors de portée directe des lumières.
+        vec3 ambient = albedo * 0.05;
+        radiance += throughput * (direct + ambient);
+
+        // Continue uniquement en réflexion/réfraction (déterministe, pas de
+        // tirage aléatoire) : c'est la partie "récursive" du ray tracing
+        // classique. Une surface purement diffuse s'arrête ici.
+        float cosTheta   = max(dot(-ray.dir, N), 0.0);
+        float f0         = mix(0.04, 1.0, mat.metallic);
+        float F          = fresnel(cosTheta, f0);
+        float specWeight = max(F, mat.metallic);
+        bool  isTransparent = mat.albedo.a < 1.0;
+
+        if (isTransparent) {
+            bool  tir;
+            float eta        = dot(ray.dir, N) < 0.0 ? (1.0 / mat.ior) : mat.ior;
+            vec3  refractDir = refract(ray.dir, N, eta, tir);
+            ray.dir    = tir ? reflect(ray.dir, N) : refractDir;
+            ray.origin = hitPoint - N * 1e-4;
+            throughput *= albedo * (1.0 - specWeight);
+        } else if (specWeight > 0.02) {
+            ray.dir    = reflect(ray.dir, N);
+            ray.origin = hitPoint + N * 1e-4;
+            throughput *= mix(vec3(1.0), albedo, mat.metallic) * specWeight;
+        } else {
+            break;
+        }
+    }
+
+    return radiance;
+}
+
 void main() {
     ivec2 coord = ivec2(gl_GlobalInvocationID.xy);
     if (coord.x >= width || coord.y >= height) return;
 
-    uint seed = uint(coord.x + coord.y * width) ^ uint(frameIndex * 2654435761u);
+    // TAA doit varier son jitter à CHAQUE frame (même en Realtime, où
+    // `frameIndex` reste figé à 0) : il a son propre compteur dédié.
+    // None/FXAA n'ont pas besoin de variation de seed pour le jitter
+    // puisqu'ils n'en appliquent pas, mais le path tracer s'en sert quand
+    // même pour ses propres tirages aléatoires (rebonds, NEE).
+    int seedFrame = (aaMode == 2) ? taaFrameIndex : frameIndex;
+    uint seed = uint(coord.x + coord.y * width) ^ uint(seedFrame * 2654435761u);
+
+    // None (0) et FXAA (3) : échantillon net au centre du pixel — le
+    // supersampling (SSAA) ou le lissage temporel (TAA) fourniraient un
+    // jitter, FXAA préfère une image stable à filtrer en post-process.
+    bool jitterEnabled = (aaMode == 1 || aaMode == 2);
 
     vec3 color = vec3(0.0);
     for (int s = 0; s < samplesPerPixel; ++s) {
-        // Jitter sub-pixel pour anti-aliasing
-        vec2 jitter = vec2(rand(seed), rand(seed)) - 0.5;
+        vec2 jitter = jitterEnabled ? (vec2(rand(seed), rand(seed)) - 0.5) : vec2(0.0);
         vec2 uv     = (vec2(coord) + jitter) / vec2(width, height) * 2.0 - 1.0;
         uv.x *= camAspect;
 
@@ -548,19 +656,31 @@ void main() {
         Ray ray;
         ray.origin = camPosition.xyz;
         ray.dir    = dir;
-        color += tracePath(ray, seed);
+        color += (technique == 1) ? traceRayTraced(ray) : tracePath(ray, seed);
     }
     color /= float(samplesPerPixel);
 
-    // Accumulation
-    vec4 prev  = imageLoad(u_Accum, coord);
-    vec4 accum = (frameIndex == 0)
-        ? vec4(color, 1.0)
-        : vec4(prev.rgb + color, prev.a + 1.0);
-    imageStore(u_Accum, coord, accum);
+    vec3 resolved;
+    if (aaMode == 2) {
+        // TAA : moyenne mobile exponentielle avec l'historique, indépendante
+        // du compteur d'accumulation du path tracer — c'est ce qui la fait
+        // fonctionner aussi en RenderMode::Realtime.
+        vec3 prevColor = imageLoad(u_Accum, coord).rgb;
+        resolved = (taaFrameIndex == 0) ? color : mix(color, prevColor, taaBlendFactor);
+        imageStore(u_Accum, coord, vec4(resolved, 1.0));
+    } else {
+        // None / SSAA / FXAA : moyenne progressive classique (fonctionne
+        // comme avant l'ajout des modes AA).
+        vec4 prev  = imageLoad(u_Accum, coord);
+        vec4 accum = (frameIndex == 0)
+            ? vec4(color, 1.0)
+            : vec4(prev.rgb + color, prev.a + 1.0);
+        imageStore(u_Accum, coord, accum);
+        resolved = accum.rgb / accum.a;
+    }
 
     // Tone mapping ACES + exposition
-    vec3 result = accum.rgb / accum.a * exposure;
+    vec3 result = resolved * exposure;
     result = (result * (2.51 * result + 0.03)) / (result * (2.43 * result + 0.59) + 0.14);
     result = pow(clamp(result, 0.0, 1.0), vec3(1.0 / 2.2));
 
@@ -594,6 +714,70 @@ void main() {
 )";
 
 	// ----------------------------------------------------------------
+	// FXAA � post-process par d�tection de contraste de luminance.
+	// Version simplifi�e "maison" (pas le FXAA 3.11 de NVIDIA) : d�tecte les
+	// bords via le contraste de luminance entre voisins directs, puis floute
+	// le long de la direction dominante du gradient (approxim�e via les 4
+	// voisins diagonaux) proportionnellement � ce contraste. Moins pr�cis que
+	// l'algorithme complet mais bien moins de code, et suffisant pour lisser
+	// les cr�nelures d'un rendu sans jitter.
+	// ----------------------------------------------------------------
+
+	static const char* s_FXAAFragSrc = R"(
+#version 430 core
+in  vec2      v_UV;
+out vec4      fragColor;
+uniform sampler2D u_Texture;
+uniform vec2  u_TexelSize;
+
+float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
+
+void main() {
+    vec3 rgbCenter = texture(u_Texture, v_UV).rgb;
+
+    vec2 t = u_TexelSize;
+    vec3 rgbN  = texture(u_Texture, v_UV + vec2( 0.0, -t.y)).rgb;
+    vec3 rgbS  = texture(u_Texture, v_UV + vec2( 0.0,  t.y)).rgb;
+    vec3 rgbE  = texture(u_Texture, v_UV + vec2( t.x,  0.0)).rgb;
+    vec3 rgbW  = texture(u_Texture, v_UV + vec2(-t.x,  0.0)).rgb;
+    vec3 rgbNW = texture(u_Texture, v_UV + vec2(-t.x, -t.y)).rgb;
+    vec3 rgbNE = texture(u_Texture, v_UV + vec2( t.x, -t.y)).rgb;
+    vec3 rgbSW = texture(u_Texture, v_UV + vec2(-t.x,  t.y)).rgb;
+    vec3 rgbSE = texture(u_Texture, v_UV + vec2( t.x,  t.y)).rgb;
+
+    float lC = luma(rgbCenter);
+    float lN = luma(rgbN),  lS = luma(rgbS),  lE = luma(rgbE),  lW = luma(rgbW);
+    float lNW = luma(rgbNW), lNE = luma(rgbNE), lSW = luma(rgbSW), lSE = luma(rgbSE);
+
+    float lMin = min(lC, min(min(lN, lS), min(lE, lW)));
+    float lMax = max(lC, max(max(lN, lS), max(lE, lW)));
+    float contrast = lMax - lMin;
+
+    // Zone plate : pas de bord, on sort la couleur brute pour ne pas flouter
+    // des d�tails fins pour rien.
+    float threshold = max(0.0312, lMax * 0.125);
+    if (contrast < threshold) {
+        fragColor = vec4(rgbCenter, 1.0);
+        return;
+    }
+
+    // Sobel simplifi� : direction dominante du gradient (horizontal vs vertical).
+    float edgeHoriz = abs(lNW + lN + lNE - lSW - lS - lSE);
+    float edgeVert  = abs(lNW + lW + lSW - lNE - lE - lSE);
+    bool  horizontal = edgeHoriz >= edgeVert;
+
+    vec3 blurA = horizontal ? rgbN : rgbW;
+    vec3 blurB = horizontal ? rgbS : rgbE;
+    vec3 blended = (rgbCenter + blurA + blurB) / 3.0;
+
+    // Force le m�lange proportionnellement au contraste local : bord net =
+    // lissage fort, bord faible = presque inchang�.
+    float blendFactor = clamp(contrast * 4.0, 0.0, 1.0);
+    fragColor = vec4(mix(rgbCenter, blended, blendFactor), 1.0);
+}
+)";
+
+	// ----------------------------------------------------------------
 	// Init / Shutdown
 	// ----------------------------------------------------------------
 
@@ -606,6 +790,7 @@ void main() {
 		createShaders();
 		createSSBOs();
 		createQuad();
+		createFXAAResources();
 
 		FUFU_INFO("Renderer initialized ({}x{})", width, height);
 	}
@@ -614,8 +799,11 @@ void main() {
 	{
 		glDeleteTextures(1, &m_OutputTexture);
 		glDeleteTextures(1, &m_AccumTexture);
+		glDeleteTextures(1, &m_FXAATexture);
+		glDeleteFramebuffers(1, &m_FXAAFBO);
 		glDeleteProgram(m_ComputeProgram);
 		glDeleteProgram(m_BlitProgram);
+		glDeleteProgram(m_FXAAProgram);
 		glDeleteBuffers(1, &m_TriangleSSBO);
 		glDeleteBuffers(1, &m_MaterialSSBO);
 		glDeleteBuffers(1, &m_BLASNodeSSBO);
@@ -657,6 +845,32 @@ void main() {
 		m_BlitProgram = linkProgram({ vs, fs });
 		glDeleteShader(vs);
 		glDeleteShader(fs);
+
+		// FXAA (r�utilise le vertex shader du blit, m�me quad plein �cran)
+		uint32_t vsFxaa = compileShader(GL_VERTEX_SHADER, s_BlitVertSrc);
+		uint32_t fsFxaa = compileShader(GL_FRAGMENT_SHADER, s_FXAAFragSrc);
+		m_FXAAProgram = linkProgram({ vsFxaa, fsFxaa });
+		glDeleteShader(vsFxaa);
+		glDeleteShader(fsFxaa);
+	}
+
+	void Renderer::createFXAAResources()
+	{
+		glGenTextures(1, &m_FXAATexture);
+		glBindTexture(GL_TEXTURE_2D, m_FXAATexture);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F,
+			m_Width, m_Height, 0, GL_RGBA, GL_FLOAT, nullptr);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+		glGenFramebuffers(1, &m_FXAAFBO);
+		glBindFramebuffer(GL_FRAMEBUFFER, m_FXAAFBO);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_FXAATexture, 0);
+
+		if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+			FUFU_ERROR("Renderer: FXAA framebuffer incomplete");
+
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	}
 
 	void Renderer::createSSBOs()
@@ -976,7 +1190,13 @@ void main() {
 
 		// Cam�ra
 		Entity cam = scene.getPrimaryCamera();
-		if (!cam) return;
+		if (!cam)
+		{
+			// Sans cam�ra, rien � rendre : effacer la sortie plut�t que de
+			// laisser l'image de la sc�ne pr�c�dente affich�e � l'�cran.
+			clearOutput();
+			return;
+		}
 
 		auto& camTransform = cam.getComponent<TransformComponent>();
 		auto& camComponent = cam.getComponent<CameraComponent>();
@@ -1012,6 +1232,10 @@ void main() {
 		frameData.triangleCount = static_cast<int>(m_Instances.size());
 		frameData.materialCount = static_cast<int>(m_Materials.size());
 		frameData.lightCount = static_cast<int>(m_Lights.size());
+		frameData.technique = static_cast<int>(m_Settings.technique);
+		frameData.aaMode = static_cast<int>(m_Settings.aaMode);
+		frameData.taaFrameIndex = m_TAAFrameIndex;
+		frameData.taaBlendFactor = m_Settings.taaBlendFactor;
 
 		glBindBuffer(GL_UNIFORM_BUFFER, m_FrameDataUBO);
 		glBufferData(GL_UNIFORM_BUFFER, sizeof(GPUFrameData), &frameData, GL_DYNAMIC_DRAW);
@@ -1019,10 +1243,17 @@ void main() {
 		computePass();
 		//blitPass();
 
+		if (m_Settings.aaMode == AAMode::FXAA)
+			fxaaPass();
+
 		// Incr�menter uniquement en accumulation et si pas � la limite
 		if (m_Settings.mode == RenderMode::Accumulation &&
 			m_FrameIndex < m_Settings.maxAccumFrames)
 			++m_FrameIndex;
+
+		// Contrairement � m_FrameIndex, le compteur TAA avance toujours : c'est
+		// ce qui lui permet de lisser aussi en RenderMode::Realtime.
+		++m_TAAFrameIndex;
 	}
 
 	void Renderer::computePass()
@@ -1064,6 +1295,25 @@ void main() {
 		glBindVertexArray(0);
 	}
 
+	void Renderer::fxaaPass()
+	{
+		glBindFramebuffer(GL_FRAMEBUFFER, m_FXAAFBO);
+		glViewport(0, 0, m_Width, m_Height);
+
+		glUseProgram(m_FXAAProgram);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, m_OutputTexture);
+		glUniform1i(glGetUniformLocation(m_FXAAProgram, "u_Texture"), 0);
+		glUniform2f(glGetUniformLocation(m_FXAAProgram, "u_TexelSize"),
+			1.f / static_cast<float>(m_Width), 1.f / static_cast<float>(m_Height));
+
+		glBindVertexArray(m_QuadVAO);
+		glDrawArrays(GL_TRIANGLES, 0, 6);
+		glBindVertexArray(0);
+
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	}
+
 	// ----------------------------------------------------------------
 	// Resize / Reset
 	// ----------------------------------------------------------------
@@ -1075,13 +1325,45 @@ void main() {
 
 		glDeleteTextures(1, &m_OutputTexture);
 		glDeleteTextures(1, &m_AccumTexture);
+		glDeleteTextures(1, &m_FXAATexture);
+		glDeleteFramebuffers(1, &m_FXAAFBO);
 		createTextures();
+		createFXAAResources();
 		resetAccumulation();
 	}
 
 	void Renderer::resetAccumulation()
 	{
 		m_FrameIndex = 0;
+		m_TAAFrameIndex = 0;
+	}
+
+	void Renderer::clearOutput()
+	{
+		std::size_t pixelCount = static_cast<std::size_t>(m_Width) * static_cast<std::size_t>(m_Height) * 4;
+		if (pixelCount == 0) return;
+
+		static std::vector<float> s_ClearBuffer;
+		if (s_ClearBuffer.size() != pixelCount)
+		{
+			s_ClearBuffer.resize(pixelCount);
+			for (std::size_t i = 0; i < pixelCount; i += 4)
+			{
+				s_ClearBuffer[i + 0] = 0.15f;
+				s_ClearBuffer[i + 1] = 0.15f;
+				s_ClearBuffer[i + 2] = 0.16f;
+				s_ClearBuffer[i + 3] = 1.f;
+			}
+		}
+
+		// Les deux textures potentiellement affichées (voir getOutputTextureID)
+		// doivent être effacées, sinon FXAA continuerait d'afficher l'ancienne
+		// scène alors que m_OutputTexture, lui, est bien effacé.
+		glBindTexture(GL_TEXTURE_2D, m_OutputTexture);
+		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, m_Width, m_Height, GL_RGBA, GL_FLOAT, s_ClearBuffer.data());
+
+		glBindTexture(GL_TEXTURE_2D, m_FXAATexture);
+		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, m_Width, m_Height, GL_RGBA, GL_FLOAT, s_ClearBuffer.data());
 	}
 
 	bool Renderer::sceneNeedsUpdate(Scene& /*scene*/)

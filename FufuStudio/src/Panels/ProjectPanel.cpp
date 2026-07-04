@@ -2,6 +2,7 @@
 #include "Application/Application.h"
 #include "Project/Assets/Asset.h"
 #include "Helpers/FontIcons.h"
+#include "Commands/CommandHistory.h"
 #include <imgui.h>
 
 
@@ -101,18 +102,60 @@ namespace FufuStudio
 		// New Scene Button
 		if (ImGui::Button(ICON_FA_PLUS " New Scene"))
 		{
-			auto scene = sm.newScene("New Scene");
-			sm.setActiveScene("New Scene");
+			// Nom unique : "New Scene" collisionnait toujours sur la même clé
+			// de map, écrasant silencieusement la précédente au lieu d'en
+			// créer une nouvelle.
+			std::string baseName = "New Scene";
+			std::string name = baseName;
+			int suffix = 1;
+			while (sm.getLoadedScenes().count(name))
+				name = baseName + " " + std::to_string(suffix++);
+
+			sm.newScene(name);
+			sm.setActiveScene(name);
 			state.selection.clear();
+			if (state.commandHistory) state.commandHistory->clear();
+			state.syncToActiveScene();
 			Fufu::Application::get().getRenderer().resetAccumulation();
 		}
 
 		ImGui::Separator();
 
+		// Actions différées : renommer/décharger une scène pendant qu'on
+		// itère la map la corromprait (invalidation d'itérateur).
+		bool doRename = false;
+		std::string renameFrom, renameTo;
+		bool doUnload = false;
+		std::string unloadName;
+
 		// Loaded Scenes
 		for (auto&[name, scene] : sm.getLoadedScenes())
 		{
 			bool isActive = (sm.getActiveScene() == scene);
+			bool isRenaming = m_RenamingScene && m_RenamingSceneName == name;
+
+			if (isRenaming)
+			{
+				ImGui::PushID(name.c_str());
+				ImGui::SetNextItemWidth(-1);
+				ImGui::SetKeyboardFocusHere();
+				bool submitted = ImGui::InputText("##rename", m_RenameBuffer, sizeof(m_RenameBuffer),
+					ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll);
+
+				if (submitted)
+				{
+					renameFrom = name;
+					renameTo = m_RenameBuffer;
+					doRename = true;
+					m_RenamingScene = false;
+				}
+				else if (ImGui::IsItemDeactivated())
+				{
+					m_RenamingScene = false; // clic ailleurs / Échap : annule
+				}
+				ImGui::PopID();
+				continue;
+			}
 
 			ImGuiTreeNodeFlags flags =
 				ImGuiTreeNodeFlags_Leaf |
@@ -128,6 +171,8 @@ namespace FufuStudio
 			{
 				sm.setActiveScene(name);
 				state.selection.clear();
+				if (state.commandHistory) state.commandHistory->clear();
+				state.syncToActiveScene();
 
 				Fufu::Application::get().getRenderer().resetAccumulation();
 			}
@@ -140,8 +185,17 @@ namespace FufuStudio
 					auto path = pm.getCurrentProject().getInfo().scenesDir() / (name + ".fufuscene");
 					sm.saveScene(scene, path);
 				}
+				if (ImGui::MenuItem(ICON_FA_PENCIL " Rename"))
+				{
+					m_RenamingScene = true;
+					m_RenamingSceneName = name;
+					strncpy_s(m_RenameBuffer, name.c_str(), sizeof(m_RenameBuffer) - 1);
+				}
 				if (ImGui::MenuItem(ICON_FA_TRASH " Unload"))
-					sm.unloadScene(name);
+				{
+					unloadName = name;
+					doUnload = true;
+				}
 
 				ImGui::EndPopup();
 			}
@@ -152,6 +206,21 @@ namespace FufuStudio
 				ImGui::SameLine();
 				ImGui::TextDisabled("(active)");
 			}
+		}
+
+		if (doRename && !renameTo.empty() && renameFrom != renameTo)
+			sm.renameScene(renameFrom, renameTo);
+
+		if (doUnload)
+		{
+			// La scène (et ses entités) peut être détruite ici : vider la
+			// sélection et l'historique undo/redo évite de garder un
+			// Fufu::Entity dont le Scene* est pendant (c'est ce qui faisait
+			// planter l'appli au prochain accès à la sélection).
+			state.selection.clear();
+			if (state.commandHistory) state.commandHistory->clear();
+			sm.unloadScene(unloadName);
+			Fufu::Application::get().getRenderer().resetAccumulation();
 		}
 	}
 

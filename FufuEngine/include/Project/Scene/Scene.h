@@ -2,8 +2,9 @@
 
 #include <entt/entt.hpp>
 #include "Project/Entity.h"
+#include "Renderer/RenderSettings.h"
 
-namespace Fufu 
+namespace Fufu
 {
 
 	class Scene
@@ -36,9 +37,17 @@ namespace Fufu
 
 		entt::registry& getRegistry() { return m_Registry; }
 
+		// Paramètres de rendu propres à CETTE scène (technique, AA, exposition...) :
+		// sauvegardés/chargés avec le fichier .fufuscene (voir SceneSerializer),
+		// et poussés dans le Renderer lorsque la scène devient active (voir
+		// EditorState::syncToActiveScene côté FufuStudio).
+		RenderSettings&       getRenderSettings()       { return m_RenderSettings; }
+		const RenderSettings& getRenderSettings() const { return m_RenderSettings; }
+
 	private:
 		entt::registry m_Registry;
 		std::string    m_Name = "Untitled";
+		RenderSettings m_RenderSettings;
 
 		friend class Entity;
 		friend class SceneSerializer;

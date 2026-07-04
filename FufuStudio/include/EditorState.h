@@ -3,8 +3,10 @@
 #include <glm/glm.hpp>
 #include <entt/entt.hpp>
 #include <Project/Entity.h>
+#include <Project/Components.h>
 #include <Project/Scene/Scene.h>
 #include <Application/Application.h>
+#include <Renderer/Renderer.h>
 #include "Panels/ImGuiContext.h"
 #include "Selection.h"
 
@@ -51,6 +53,30 @@ namespace FufuStudio
 		bool hasProject() const
 		{
 			return Fufu::Application::get().getProjectManager().hasProject();
+		}
+
+		// À appeler une fois juste après qu'une scène devient active (création,
+		// ouverture, switch dans le ProjectPanel...). ViewportPanel::syncCameraToScene
+		// pousse `cameraPosition`/`cameraRotation` vers l'entité caméra à CHAQUE
+		// frame ; sans cet appel, ces valeurs resteraient celles de la scène
+		// précédente et écraseraient dès la frame suivante la position/rotation
+		// qu'on vient pourtant de charger depuis le fichier. On récupère donc ici
+		// la transform déjà chargée (elle round-trip normalement via
+		// TransformComponent, pas besoin de la stocker séparément), et on pousse
+		// aussi les RenderSettings sauvegardés avec la scène dans le Renderer.
+		void syncToActiveScene()
+		{
+			auto scene = getActiveScene();
+			if (!scene) return;
+
+			if (Fufu::Entity cam = scene->getPrimaryCamera())
+			{
+				auto& t = cam.getComponent<Fufu::TransformComponent>();
+				cameraPosition = t.position;
+				cameraRotation = t.rotation;
+			}
+
+			Fufu::Application::get().getRenderer().getSettings() = scene->getRenderSettings();
 		}
 	};
 

@@ -33,6 +33,20 @@ namespace Fufu {
 		json root;
 		root["scene"] = m_Scene->getName();
 		root["version"] = SceneSerializer::k_CurrentVersion;
+
+		const RenderSettings& rs = m_Scene->getRenderSettings();
+		root["renderSettings"] = {
+			{ "mode",            static_cast<int>(rs.mode) },
+			{ "technique",       static_cast<int>(rs.technique) },
+			{ "aaMode",          static_cast<int>(rs.aaMode) },
+			{ "maxBounces",      rs.maxBounces },
+			{ "samplesPerPixel", rs.samplesPerPixel },
+			{ "maxAccumFrames",  rs.maxAccumFrames },
+			{ "exposure",        rs.exposure },
+			{ "taaBlendFactor",  rs.taaBlendFactor },
+			{ "resetOnMove",     rs.resetOnMove }
+		};
+
 		root["entities"] = json::array();
 
 		auto& reg = m_Scene->m_Registry;
@@ -86,6 +100,23 @@ namespace Fufu {
 		}
 
 		m_Scene->setName(root.at("scene").get<std::string>());
+
+		// Scènes antérieures à l'ajout de ce bloc : on garde les RenderSettings
+		// par défaut déjà en place sur la Scene plutôt que d'échouer.
+		if (root.contains("renderSettings"))
+		{
+			const auto& rsJson = root.at("renderSettings");
+			RenderSettings& rs = m_Scene->getRenderSettings();
+			rs.mode            = static_cast<RenderMode>(rsJson.value("mode", static_cast<int>(rs.mode)));
+			rs.technique       = static_cast<RenderTechnique>(rsJson.value("technique", static_cast<int>(rs.technique)));
+			rs.aaMode          = static_cast<AAMode>(rsJson.value("aaMode", static_cast<int>(rs.aaMode)));
+			rs.maxBounces      = rsJson.value("maxBounces", rs.maxBounces);
+			rs.samplesPerPixel = rsJson.value("samplesPerPixel", rs.samplesPerPixel);
+			rs.maxAccumFrames  = rsJson.value("maxAccumFrames", rs.maxAccumFrames);
+			rs.exposure        = rsJson.value("exposure", rs.exposure);
+			rs.taaBlendFactor  = rsJson.value("taaBlendFactor", rs.taaBlendFactor);
+			rs.resetOnMove     = rsJson.value("resetOnMove", rs.resetOnMove);
+		}
 
 		// id (tel qu'écrit dans le fichier) -> entité nouvellement créée.
 		std::unordered_map<int, Entity> idToEntity;

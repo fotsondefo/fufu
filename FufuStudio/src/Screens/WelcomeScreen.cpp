@@ -72,6 +72,7 @@ namespace FufuStudio
 				if (pm.openProject(path.get()))
 				{
 					state.selection.clear();
+					state.syncToActiveScene();
 					Fufu::Application::get().getRenderer().resetAccumulation();
 					ImGui::End();
 
@@ -110,6 +111,7 @@ namespace FufuStudio
 				if (pm.openProject(entry.path))
 				{
 					state.selection.clear();
+					state.syncToActiveScene();
 					Fufu::Application::get().getRenderer().resetAccumulation();
 				}
 			}
@@ -168,6 +170,7 @@ namespace FufuStudio
 			if (project)
 			{
 				state.selection.clear();
+				state.syncToActiveScene();
 				Fufu::Application::get().getRenderer().resetAccumulation();
 			}
 		}

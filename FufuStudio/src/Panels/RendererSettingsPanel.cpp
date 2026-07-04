@@ -5,12 +5,24 @@
 namespace FufuStudio 
 {
 
-	void RendererSettingsPanel::onImGuiRender(EditorState& /*state*/)
+	void RendererSettingsPanel::onImGuiRender(EditorState& state)
 	{
 		ImGui::Begin(ICON_FA_WRENCH " Renderer Settings##rendersettings");
 
 		auto& settings = m_Renderer.getSettings();
 		bool  changed = false;
+
+		// Technique
+		ImGui::SeparatorText("Technique");
+		int technique = static_cast<int>(settings.technique);
+		if (ImGui::RadioButton("Path Tracing", &technique, 0)) { settings.technique = Fufu::RenderTechnique::PathTracing; changed = true; }
+		ImGui::SameLine();
+		if (ImGui::RadioButton("Ray Tracing", &technique, 1))  { settings.technique = Fufu::RenderTechnique::RayTracing;  changed = true; }
+
+		if (settings.technique == Fufu::RenderTechnique::PathTracing)
+			ImGui::TextDisabled("GI diffuse stochastique : réaliste, bruit qui converge avec le temps.");
+		else
+			ImGui::TextDisabled("Eclairage direct + reflets/refraction, deterministe : rapide, pas de bruit, pas de GI.");
 
 		// Mode
 		ImGui::SeparatorText("Mode");
@@ -37,19 +49,56 @@ namespace FufuStudio
 		if (ImGui::SliderInt("Max accum frames", &settings.maxAccumFrames, 64, 8192)) changed = true;
 
 		ImGui::Spacing();
+		ImGui::SeparatorText("Anti-aliasing");
+		int aaMode = static_cast<int>(settings.aaMode);
+		if (ImGui::RadioButton("None", &aaMode, 0)) { settings.aaMode = Fufu::AAMode::None; changed = true; }
+		ImGui::SameLine();
+		if (ImGui::RadioButton("SSAA", &aaMode, 1)) { settings.aaMode = Fufu::AAMode::SSAA; changed = true; }
+		ImGui::SameLine();
+		if (ImGui::RadioButton("TAA", &aaMode, 2))  { settings.aaMode = Fufu::AAMode::TAA;  changed = true; }
+		ImGui::SameLine();
+		if (ImGui::RadioButton("FXAA", &aaMode, 3)) { settings.aaMode = Fufu::AAMode::FXAA; changed = true; }
+
+		switch (settings.aaMode)
+		{
+		case Fufu::AAMode::None:
+			ImGui::TextDisabled("Pas de lissage : bords crantés, le moins cher.");
+			break;
+		case Fufu::AAMode::SSAA:
+			ImGui::TextDisabled("Supersampling : jitter par sample (voir 'Samples / frame' ci-dessus), moyenné.");
+			break;
+		case Fufu::AAMode::TAA:
+			ImGui::TextDisabled("Lissage temporel : un sample/frame, moyenné avec l'historique. Fonctionne aussi en Realtime.");
+			if (ImGui::SliderFloat("History weight", &settings.taaBlendFactor, 0.f, 0.98f)) changed = true;
+			break;
+		case Fufu::AAMode::FXAA:
+			ImGui::TextDisabled("Post-process par détection de contraste : le moins coûteux, pas de sample supplémentaire.");
+			break;
+		}
+
+		ImGui::Spacing();
 		ImGui::SeparatorText("Post-process");
 		if (ImGui::SliderFloat("Exposure", &settings.exposure, 0.1f, 10.f)) changed = true;
 
 		ImGui::Spacing();
 		ImGui::SeparatorText("Camera");
-		// Ces sliders modifient directement l'EditorState via le pointeur pass� � onUpdate
-		// � on les met ici pour regrouper les settings
+		// Ces sliders modifient directement l'EditorState via le pointeur pass� � onUpdate
+		// � on les met ici pour regrouper les settings
 		ImGui::Text("Move speed and look speed");
 		ImGui::Text("are in the Viewport panel (WASD + RMB).");
 
-		// Reset automatique si un param�tre change en mode accumulation
+		// Reset automatique si un param�tre change en mode accumulation
 		if (changed && settings.mode == Fufu::RenderMode::Accumulation)
 			m_Renderer.resetAccumulation();
+
+		// Reporte les changements sur la scène active pour qu'ils survivent à
+		// un Save : `settings` n'est que la copie "live" tenue par le Renderer,
+		// la persistance passe par Scene::getRenderSettings() (voir SceneSerializer).
+		if (changed)
+		{
+			if (auto scene = state.getActiveScene())
+				scene->getRenderSettings() = settings;
+		}
 
 		ImGui::End();
 	}

@@ -1,5 +1,6 @@
 #include "depch.h"
 #include "Project/Scene/SceneManager.h"
+#include "Project/Components.h"
 
 namespace Fufu 
 {
@@ -7,7 +8,7 @@ namespace Fufu
 	SceneManager::SceneManager(const std::filesystem::path& scenesDir): m_ScenesDir(scenesDir)
 	{
 		std::filesystem::create_directories(scenesDir);
-		FUFU_INFO("SceneManager created � scenes dir: '{}'", scenesDir.string());
+		FUFU_INFO("SceneManager created � scenes dir: '{}'", scenesDir.string());
 	}
 
 	std::shared_ptr<Scene> SceneManager::loadScene(const std::filesystem::path& path)
@@ -30,6 +31,15 @@ namespace Fufu
 	std::shared_ptr<Scene> SceneManager::newScene(const std::string& name)
 	{
 		auto scene = std::make_shared<Scene>(name);
+
+		// Une scène sans caméra ne peut rien afficher (voir Renderer::renderScene,
+		// qui sort en avance faute de caméra primaire) : on démarre toujours
+		// avec une caméra par défaut plutôt que de laisser l'utilisateur
+		// découvrir un viewport figé sur la scène précédente.
+		Entity cam = scene->createEntity("Camera");
+		cam.getComponent<TransformComponent>().position = { 0.f, 1.f, 5.f };
+		cam.addComponent<CameraComponent>().primary = true;
+
 		m_LoadedScenes[name] = scene;
 		FUFU_INFO("SceneManager: new scene '{}'", name);
 
@@ -58,6 +68,24 @@ namespace Fufu
 
 		m_LoadedScenes.erase(it);
 		FUFU_INFO("SceneManager: unloaded '{}'", name);
+	}
+
+	bool SceneManager::renameScene(const std::string& oldName, const std::string& newName)
+	{
+		if (oldName == newName) return true;
+		if (newName.empty()) return false;
+		if (m_LoadedScenes.count(newName)) return false; // collision de nom
+
+		auto it = m_LoadedScenes.find(oldName);
+		if (it == m_LoadedScenes.end()) return false;
+
+		auto scene = it->second;
+		m_LoadedScenes.erase(it);
+		scene->setName(newName);
+		m_LoadedScenes[newName] = scene;
+
+		FUFU_INFO("SceneManager: renamed '{}' -> '{}'", oldName, newName);
+		return true;
 	}
 
 	void SceneManager::unloadAll()
