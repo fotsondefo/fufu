@@ -33,6 +33,7 @@ namespace Fufu
 		bool isValid() const;
 
 		entt::entity getHandle() const { return m_Handle; }
+		Scene*       getScene()  const { return m_Scene; }
 
 		bool operator==(const Entity& other) const { return m_Handle == other.m_Handle && m_Scene == other.m_Scene; }
 		bool operator!=(const Entity& other) const { return !(*this == other); }

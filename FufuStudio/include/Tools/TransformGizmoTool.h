@@ -191,6 +191,10 @@ namespace FufuStudio
 					}
 				}
 
+				// TransformComponent édité en place (pas d'add/removeComponent,
+				// donc pas couvert par les hooks structurels d'Entity) : le GPUScene
+				// doit être re-uploadé pour que l'instance bouge dans le rendu.
+				scene->markDirty();
 				m_Renderer.resetAccumulation();
 			}
 

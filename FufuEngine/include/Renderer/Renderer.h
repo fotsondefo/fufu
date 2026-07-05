@@ -89,6 +89,14 @@ namespace Fufu
 		// soit le RenderMode (contrairement à m_FrameIndex, qui reste à 0 en
 		// Realtime) — c'est ce qui permet au TAA de lisser même hors accumulation.
 		int      m_TAAFrameIndex = 0;
+
+		// Cache pour sceneNeedsUpdate : re-upload seulement si la scène a
+		// réellement changé (Scene::getVersion(), voir Scene::markDirty) OU si
+		// la scène active a changé d'identité (switch de scène) — comparer la
+		// seule version ne suffirait pas dans ce second cas si la nouvelle
+		// scène active a, par coïncidence, la même version numérique en cache.
+		Scene*   m_LastScene = nullptr;
+		uint32_t m_LastSceneVersion = 0;
 	};
 
 }

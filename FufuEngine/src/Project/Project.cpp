@@ -2,6 +2,7 @@
 #include "Project/Project.h"
 #include <nlohmann/json.hpp>
 #include <fstream>
+#include <algorithm>
 
 using json = nlohmann::json;
 
@@ -28,32 +29,64 @@ namespace Fufu
 		// Scan existing assets
 		m_AssetManager->scanDirectory();
 
-		// Load StartupScene
-		if (!m_Info.startupScene.empty())
+		// Charge TOUTES les scènes connues du projet (pas seulement
+		// startupScene, qui ne servait auparavant qu'à choisir la scène active
+		// — les autres entrées de m_Info.scenes n'étaient jamais lues).
+		std::string activeSceneName;
+		for (const std::string& relPath : m_Info.scenes)
 		{
-			std::filesystem::path scenePath =
-				m_Info.rootDirectory / m_Info.startupScene;
+			std::filesystem::path scenePath = m_Info.rootDirectory / relPath;
+			if (!std::filesystem::exists(scenePath))
+				continue;
 
-			if (std::filesystem::exists(scenePath))
-			{
-				auto scene = m_SceneManager->loadScene(scenePath);
-				if (scene)
-					m_SceneManager->setActiveScene(scene->getName());
-			}
-			else
-			{
-				// Create default scene
-				auto scene = m_SceneManager->newScene("Main");
-				m_SceneManager->setActiveScene("Main");
-			}
+			auto scene = m_SceneManager->loadScene(scenePath);
+			if (!scene) continue;
+
+			if (activeSceneName.empty() || relPath == m_Info.startupScene)
+				activeSceneName = scene->getName();
+		}
+
+		if (!activeSceneName.empty())
+		{
+			m_SceneManager->setActiveScene(activeSceneName);
 		}
 		else
 		{
+			// Projet neuf, ou tous les fichiers de scène du manifeste sont
+			// manquants : scène par défaut, sauvegardée immédiatement (et
+			// enregistrée dans le manifeste) pour ne pas disparaître au
+			// prochain lancement si l'utilisateur ne fait jamais Save.
 			auto scene = m_SceneManager->newScene("Main");
 			m_SceneManager->setActiveScene("Main");
+
+			std::filesystem::path path = m_Info.scenesDir() / "Main.fufuscene";
+			if (m_SceneManager->saveScene(scene, path))
+				registerScene("Scenes/Main.fufuscene");
 		}
 
 		FUFU_INFO("Project '{}' initialized", m_Info.name);
+	}
+
+	void Project::registerScene(const std::string& relativePath)
+	{
+		if (std::find(m_Info.scenes.begin(), m_Info.scenes.end(), relativePath) != m_Info.scenes.end())
+			return;
+
+		m_Info.scenes.push_back(relativePath);
+		save();
+	}
+
+	void Project::saveAllLoadedScenes()
+	{
+		for (auto& [name, scene] : m_SceneManager->getLoadedScenes())
+		{
+			std::filesystem::path path = m_Info.scenesDir() / (name + ".fufuscene");
+			if (m_SceneManager->saveScene(scene, path))
+			{
+				std::filesystem::path rel = std::filesystem::relative(path, m_Info.rootDirectory);
+				registerScene(rel.generic_string());
+			}
+		}
 	}
 
 	void Project::save() const

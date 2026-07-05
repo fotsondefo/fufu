@@ -111,12 +111,24 @@ namespace FufuStudio
 			while (sm.getLoadedScenes().count(name))
 				name = baseName + " " + std::to_string(suffix++);
 
-			sm.newScene(name);
+			auto newScene = sm.newScene(name);
 			sm.setActiveScene(name);
 			state.selection.clear();
 			if (state.commandHistory) state.commandHistory->clear();
 			state.syncToActiveScene();
 			Fufu::Application::get().getRenderer().resetAccumulation();
+
+			// Sauvegarde immédiate : sans ça la scène ne survivrait pas à une
+			// fermeture de l'appli tant qu'on n'a pas fait Save explicitement
+			// (voir aussi Project::saveAllLoadedScenes, le filet de sécurité à
+			// la fermeture — ceci l'enregistre en plus dès la création).
+			auto& proj = pm.getCurrentProject();
+			std::filesystem::path path = proj.getInfo().scenesDir() / (name + ".fufuscene");
+			if (sm.saveScene(newScene, path))
+			{
+				std::filesystem::path rel = std::filesystem::relative(path, proj.getRootDir());
+				proj.registerScene(rel.generic_string());
+			}
 		}
 
 		ImGui::Separator();
@@ -182,8 +194,13 @@ namespace FufuStudio
 			{
 				if (ImGui::MenuItem(ICON_FA_FLOPPY_O " Save"))
 				{
-					auto path = pm.getCurrentProject().getInfo().scenesDir() / (name + ".fufuscene");
-					sm.saveScene(scene, path);
+					auto& proj = pm.getCurrentProject();
+					auto path = proj.getInfo().scenesDir() / (name + ".fufuscene");
+					if (sm.saveScene(scene, path))
+					{
+						std::filesystem::path rel = std::filesystem::relative(path, proj.getRootDir());
+						proj.registerScene(rel.generic_string());
+					}
 				}
 				if (ImGui::MenuItem(ICON_FA_PENCIL " Rename"))
 				{

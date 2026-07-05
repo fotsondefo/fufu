@@ -10,6 +10,7 @@ namespace Fufu
 		Entity entity(m_Registry.create(), this);
 		entity.addComponent<TagComponent>(tag);
 		entity.addComponent<TransformComponent>();
+		markDirty();
 		return entity;
 	}
 
@@ -30,6 +31,7 @@ namespace Fufu
 		}
 
 		m_Registry.destroy(entity.getHandle());
+		markDirty();
 	}
 
 	void Scene::setParent(Entity child, Entity parent)
@@ -46,6 +48,8 @@ namespace Fufu
 		if (!parent.hasComponent<ChildrenComponent>())
 			parent.addComponent<ChildrenComponent>();
 		parent.getComponent<ChildrenComponent>().addChild(child.getHandle());
+
+		markDirty();
 	}
 
 	void Scene::removeParent(Entity child)
@@ -59,6 +63,7 @@ namespace Fufu
 			m_Registry.get<ChildrenComponent>(parentHandle).removeChild(child.getHandle());
 
 		child.removeComponent<ParentComponent>();
+		markDirty();
 	}
 
 	Entity Scene::getPrimaryCamera()

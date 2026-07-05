@@ -39,6 +39,12 @@ namespace FufuStudio
 			subMeshes[m_SubMeshIndex] = mesh;
 			asset->invalidateLODs(); // LOD0 a changé, les LOD générés sont obsolètes
 			Fufu::MeshExporter::writeObj(m_MeshPath, mesh);
+
+			// Voir ExtrudeFaceCommand::markActiveSceneDirty pour le raisonnement
+			// (géométrie d'asset, pas de component ECS à observer automatiquement).
+			if (auto scene = pm.getCurrentProject().getSceneManager().getActiveScene())
+				scene->markDirty();
+
 			Fufu::Application::get().getRenderer().resetAccumulation();
 		}
 

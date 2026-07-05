@@ -115,6 +115,12 @@ namespace FufuStudio
 				applyBrush(subMesh, model, pick.worldPosition);
 				Fufu::MeshUtils::recomputeNormals(subMesh);
 				meshAsset->invalidateLODs(); // LOD0 change à chaque frame de drag
+
+				// La géométrie de l'asset a changé, pas un component ECS : rien
+				// dans Entity ne peut le détecter automatiquement, donc on
+				// marque explicitement la scène active dirty pour forcer le
+				// re-upload GPU (BLAS de ce mesh inclus).
+				scene->markDirty();
 				m_Renderer.resetAccumulation();
 			}
 

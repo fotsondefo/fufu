@@ -237,12 +237,20 @@ namespace Fufu
 		return ok;
 	}
 
-	bool Renderer::sceneNeedsUpdate(Scene& /*scene*/)
+	bool Renderer::sceneNeedsUpdate(Scene& scene)
 	{
-		// Pour l'instant on upload � chaque frame.
-		// Tu peux ajouter un syst�me de version sur Scene plus tard
-		// pour ne re-uploader que si des composants ont chang�.
-		return true;
+		// Reconstruire toute la géométrie GPU (BVH inclus) à chaque frame était
+		// le vrai goulot d'étranglement sur les meshes un peu lourds (~50k
+		// triangles) : ce n'est plus nécessaire que quand la scène a réellement
+		// changé (Scene::markDirty, voir Scene.h/EntityImpl.h) ou qu'on vient
+		// de basculer sur une autre scène active.
+		if (&scene != m_LastScene || scene.getVersion() != m_LastSceneVersion)
+		{
+			m_LastScene = &scene;
+			m_LastSceneVersion = scene.getVersion();
+			return true;
+		}
+		return false;
 	}
 
 }

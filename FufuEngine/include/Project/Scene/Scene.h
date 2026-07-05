@@ -51,11 +51,22 @@ namespace Fufu
 		EnvironmentSettings&       getEnvironment()       { return m_Environment; }
 		const EnvironmentSettings& getEnvironment() const { return m_Environment; }
 
+		// Compteur bump é à chaque mutation de contenu qui nécessite un
+		// re-upload GPU (structure de l'ECS via createEntity/destroyEntity/
+		// setParent/removeParent et addComponent/removeComponent — voir
+		// EntityImpl.h —, ou explicitement par les commandes qui éditent un
+		// component/mesh en place). Comparé par Renderer::sceneNeedsUpdate à
+		// une valeur mise en cache pour éviter de reconstruire toute la
+		// géométrie GPU (BVH inclus) à chaque frame alors que rien n'a changé.
+		void     markDirty() { ++m_Version; }
+		uint32_t getVersion() const { return m_Version; }
+
 	private:
 		entt::registry m_Registry;
 		std::string    m_Name = "Untitled";
 		RenderSettings m_RenderSettings;
 		EnvironmentSettings m_Environment;
+		uint32_t m_Version = 0;
 
 		friend class Entity;
 		friend class SceneSerializer;

@@ -105,6 +105,7 @@ namespace FufuStudio
 
 			asset->invalidateLODs(); // LOD0 a changé, les LOD générés sont obsolètes
 			Fufu::MeshExporter::writeObj(m_MeshPath, mesh);
+			markActiveSceneDirty();
 			Fufu::Application::get().getRenderer().resetAccumulation();
 		}
 
@@ -119,6 +120,7 @@ namespace FufuStudio
 			subMeshes[m_SubMeshIndex] = m_Before;
 			asset->invalidateLODs();
 			Fufu::MeshExporter::writeObj(m_MeshPath, m_Before);
+			markActiveSceneDirty();
 			Fufu::Application::get().getRenderer().resetAccumulation();
 		}
 
@@ -133,6 +135,7 @@ namespace FufuStudio
 			subMeshes[m_SubMeshIndex] = m_After;
 			asset->invalidateLODs();
 			Fufu::MeshExporter::writeObj(m_MeshPath, m_After);
+			markActiveSceneDirty();
 			Fufu::Application::get().getRenderer().resetAccumulation();
 		}
 
@@ -144,6 +147,22 @@ namespace FufuStudio
 			auto& pm = Fufu::Application::get().getProjectManager();
 			if (!pm.hasProject()) return nullptr;
 			return pm.getCurrentProject().getAssetManager().getMesh(m_MeshPath);
+		}
+
+		// La géométrie de l'asset a changé, pas un component ECS : rien ne le
+		// détecte automatiquement. On ne connaît pas ici quelle(s) entité(s)
+		// référencent ce mesh, donc on marque la scène active dirty (cas
+		// pratique : Extrude n'opère que sur l'entité sélectionnée dans la
+		// scène active) — une autre scène chargée référençant le même mesh se
+		// rafraîchira d'elle-même dès qu'elle redeviendra active (changement
+		// d'identité détecté par Renderer::sceneNeedsUpdate).
+		static void markActiveSceneDirty()
+		{
+			auto& pm = Fufu::Application::get().getProjectManager();
+			if (!pm.hasProject()) return;
+
+			if (auto scene = pm.getCurrentProject().getSceneManager().getActiveScene())
+				scene->markDirty();
 		}
 
 		std::filesystem::path m_MeshPath;

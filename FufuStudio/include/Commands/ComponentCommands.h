@@ -28,7 +28,13 @@ namespace FufuStudio
 		void apply(const Component& value)
 		{
 			if (m_Entity.isValid() && m_Entity.hasComponent<Component>())
+			{
 				m_Entity.getComponent<Component>() = value;
+				// Édition en place (pas d'add/removeComponent) : le seul cas que
+				// les hooks structurels d'Entity ne couvrent pas automatiquement.
+				if (auto* scene = m_Entity.getScene())
+					scene->markDirty();
+			}
 		}
 
 		Fufu::Entity m_Entity;
@@ -111,9 +117,14 @@ namespace FufuStudio
 			if (!m_Entity.isValid()) return;
 
 			if (m_Entity.hasComponent<Fufu::MeshComponent>())
+			{
 				m_Entity.getComponent<Fufu::MeshComponent>() = Fufu::MeshComponent(m_NewPath, m_NewID);
+				if (auto* scene = m_Entity.getScene()) scene->markDirty();
+			}
 			else
+			{
 				m_Entity.addComponent<Fufu::MeshComponent>(m_NewPath, m_NewID);
+			}
 		}
 
 		void undo() override
@@ -121,9 +132,14 @@ namespace FufuStudio
 			if (!m_Entity.isValid()) return;
 
 			if (m_HadBefore)
+			{
 				m_Entity.getComponent<Fufu::MeshComponent>() = m_Before;
+				if (auto* scene = m_Entity.getScene()) scene->markDirty();
+			}
 			else if (m_Entity.hasComponent<Fufu::MeshComponent>())
+			{
 				m_Entity.removeComponent<Fufu::MeshComponent>();
+			}
 		}
 
 		const char* getName() const override { return "Set Mesh"; }

@@ -9,7 +9,7 @@ namespace Fufu
 		m_AppConfigDir = appConfigDir;
 		std::filesystem::create_directories(appConfigDir);
 		m_RecentProjects.load(appConfigDir);
-		FUFU_INFO("ProjectManager initialized � {} recent projects", m_RecentProjects.getEntries().size());
+		FUFU_INFO("ProjectManager initialized � {} recent projects", m_RecentProjects.getEntries().size());
 	}
 
 	void ProjectManager::shutdown()
@@ -74,6 +74,11 @@ namespace Fufu
 	void ProjectManager::closeProject()
 	{
 		if (!m_CurrentProject) return;
+
+		// Sans ça, une scène créée pendant la session (ex: "+ New Scene") mais
+		// jamais sauvegardée manuellement disparaissait purement et simplement
+		// à la fermeture — plus aucune trace ni sur disque ni dans le .fufuproj.
+		m_CurrentProject->saveAllLoadedScenes();
 
 		m_CurrentProject->getSceneManager().unloadAll();
 		m_CurrentProject->getAssetManager().unloadAll();

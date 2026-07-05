@@ -157,10 +157,17 @@ namespace FufuStudio
 		// Reset accumulation si la cam�ra principale a boug�
 		bool changed = t.position != posBefore || t.rotation != rotBefore || t.scale != scaBefore;
 
-		if (changed && entity.hasComponent<Fufu::CameraComponent>() && entity.getComponent<Fufu::CameraComponent>().primary)
+		if (changed)
+		{
+			// Une caméra ne passe jamais par le GPUScene (sa transform est lue
+			// à chaque frame directement par Renderer) : seule une entité avec
+			// géométrie a besoin de marquer la scène dirty pour re-upload.
+			if (!entity.hasComponent<Fufu::CameraComponent>())
+				if (auto* scene = entity.getScene())
+					scene->markDirty();
+
 			Fufu::Application::get().getRenderer().resetAccumulation();
-		else if (changed)
-			Fufu::Application::get().getRenderer().resetAccumulation();
+		}
 	}
 
 	void InspectorPanel::drawMesh(Fufu::Entity entity, EditorState& state)
@@ -181,6 +188,7 @@ namespace FufuStudio
 		{
 			mesh.meshPath = std::string(buf);
 			mesh.meshID = 0; // invalider le cache UUID
+			if (auto* scene = entity.getScene()) scene->markDirty();
 			Fufu::Application::get().getRenderer().resetAccumulation();
 		}
 		trackEdit(entity, m_PendingMesh, state);
@@ -243,7 +251,10 @@ namespace FufuStudio
 		trackEdit(entity, m_PendingMaterial, state);
 
 		if (changed)
+		{
+			if (auto* scene = entity.getScene()) scene->markDirty();
 			Fufu::Application::get().getRenderer().resetAccumulation();
+		}
 
 		if (ImGui::SmallButton("Remove##mat"))
 			state.commandHistory->executeCommand<ComponentRemoveCommand<Fufu::MaterialComponent>>(entity);
@@ -346,7 +357,10 @@ namespace FufuStudio
 		trackEdit(entity, m_PendingGroom, state);
 
 		if (changed)
+		{
+			if (auto* scene = entity.getScene()) scene->markDirty();
 			Fufu::Application::get().getRenderer().resetAccumulation();
+		}
 
 		if (ImGui::SmallButton("Remove##groom"))
 			state.commandHistory->executeCommand<ComponentRemoveCommand<Fufu::GroomComponent>>(entity);
@@ -404,7 +418,10 @@ namespace FufuStudio
 		trackEdit(entity, m_PendingLight, state);
 
 		if (changed)
+		{
+			if (auto* scene = entity.getScene()) scene->markDirty();
 			Fufu::Application::get().getRenderer().resetAccumulation();
+		}
 
 		if (ImGui::SmallButton("Remove##light"))
 			state.commandHistory->executeCommand<ComponentRemoveCommand<Fufu::LightComponent>>(entity);
