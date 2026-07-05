@@ -4,6 +4,7 @@
 #include "BVH.h"
 #include "Project/Scene/Scene.h"
 #include <vector>
+#include <unordered_map>
 #include <cstdint>
 
 namespace Fufu
@@ -11,23 +12,33 @@ namespace Fufu
 	// Empaquette une Fufu::Scene en géométrie/matériaux/lumières GPU : BLAS
 	// (triangles + BVH par mesh unique en espace local, partagé entre
 	// instances — c'est ça l'instancing) et TLAS (BVH sur les boîtes
-	// englobantes monde des instances). Extrait de Renderer pour séparer
-	// "empaqueter la scène pour le GPU" de "exécuter les passes de rendu" :
-	// Renderer se contente d'appeler upload() puis bind() avant de
-	// dispatcher les passes.
+	// englobantes monde des instances).
+	//
+	// Deux catégories de données GPU, mises à jour à des rythmes très
+	// différents :
+	//  - géométrie (triangles/nœuds BLAS) : STATIC_DRAW, reconstruite et
+	//    ré-uploadée seulement quand l'ENSEMBLE des (mesh, LOD) réellement
+	//    référencés par la scène change (nouveau mesh, sculpt/extrude,
+	//    changement de LOD par distance) — jamais quand une entité bouge.
+	//    Le BVH de chaque mesh lui-même n'est construit qu'une fois par
+	//    MeshAsset (voir MeshAsset::getOrBuildBLAS), pas ici.
+	//  - instances/matériaux/lumières/TLAS : DYNAMIC_DRAW, reconstruites à
+	//    chaque upload() (coût proportionnel au nombre d'entités/lumières,
+	//    pas au nombre de triangles — négligeable même sur un mesh à 50k+
+	//    triangles).
 	class GPUScene
 	{
 	public:
 		void init();
 		void shutdown();
 
-		// Reconstruit entièrement la géométrie/matériaux/lumières GPU à partir
-		// de la scène (pas de diff incrémental pour l'instant : voir
-		// Renderer::sceneNeedsUpdate).
+		// Re-synchronise la géométrie/matériaux/lumières GPU avec la scène.
+		// Voir le commentaire de classe pour ce qui est réellement reconstruit.
 		void upload(Scene& scene);
 
 		// Bind les SSBOs aux binding points attendus par le compute shader :
-		// 2=triangles, 3=materials, 6=blasNodes, 7=instances, 8=tlasNodes, 9=lights.
+		// 2=positions, 3=materials, 6=blasNodes, 7=instances, 8=tlasNodes,
+		// 9=lights, 10=attributs.
 		void bind() const;
 
 		// triangleCount côté shader est réutilisé comme "nombre d'instances"
@@ -37,14 +48,32 @@ namespace Fufu
 		int getLightCount()    const { return static_cast<int>(m_Lights.size()); }
 
 	private:
-		uint32_t m_TriangleSSBO = 0;  // BLAS : triangles en espace local, concaténés par mesh unique
+		// Offsets dans les buffers concaténés m_TrianglePositions/m_BLASNodes
+		// (m_TriangleAttributes partage les mêmes indices), plus une signature
+		// ("sourceVersion") permettant de détecter que la source
+		// (MeshAsset::getBLASVersion, ou le hash des paramètres groom) a changé
+		// depuis la dernière concaténation, sans comparer le contenu.
+		struct BLASRef
+		{
+			int nodeOffset;
+			int triOffset;
+			uint64_t sourceVersion;
+		};
+
+		// Persistant entre deux appels à upload() — c'est ce qui permet de
+		// sauter la reconstruction quand rien n'a changé côté géométrie.
+		std::unordered_map<std::string, BLASRef> m_BLASCache;
+
+		uint32_t m_TrianglePositionSSBO = 0;  // Intersection uniquement (voir GPUTrianglePosition)
+		uint32_t m_TriangleAttributeSSBO = 0; // Normales/UV/matériau, lus une seule fois sur le hit final
 		uint32_t m_MaterialSSBO = 0;
 		uint32_t m_BLASNodeSSBO = 0;  // BLAS : nœuds BVH, concaténés par mesh unique
 		uint32_t m_InstanceSSBO = 0;  // une entrée par instance (transform + réf. BLAS + matériau)
 		uint32_t m_TLASNodeSSBO = 0;  // BVH de plus haut niveau, sur les boîtes des instances
 		uint32_t m_LightSSBO = 0;
 
-		std::vector<GPUTriangle> m_Triangles;   // BLAS, espace local, concaténés par mesh unique
+		std::vector<GPUTrianglePosition>  m_TrianglePositions;  // BLAS, espace local, concaténés par mesh unique
+		std::vector<GPUTriangleAttribute> m_TriangleAttributes; // mêmes indices que m_TrianglePositions
 		std::vector<GPUMaterial> m_Materials;
 		std::vector<GPUBVHNode>  m_BLASNodes;   // BLAS, concaténés par mesh unique
 		std::vector<GPUInstance> m_Instances;

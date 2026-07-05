@@ -17,8 +17,16 @@ layout(local_size_x = 16, local_size_y = 16) in;
 layout(rgba32f, binding = 0) uniform image2D u_Output;
 layout(rgba32f, binding = 1) uniform image2D u_Accum;
 
-struct Triangle {
+// Buffer d'INTERSECTION : seul lu par la traversée du BVH (boucle interne).
+// 48 octets — pas de normales/UV/matériau ici, pour réduire le trafic
+// mémoire pendant la partie la plus chaude du shader.
+struct TrianglePosition {
     vec4 v0, v1, v2;
+};
+
+// Buffer d'ATTRIBUTS : lu UNE seule fois, après avoir trouvé le point
+// d'impact final du rayon (voir resolveHit()) — jamais pendant la traversée.
+struct TriangleAttribute {
     vec4 n0, n1, n2;
     vec2 uv0, uv1, uv2;
     int  materialIndex;
@@ -65,12 +73,13 @@ struct Light {
     float _pad[2];
 };
 
-layout(std430, binding = 2) readonly buffer TriangleBuffer { Triangle triangles[]; };   // BLAS, espace local
-layout(std430, binding = 3) readonly buffer MaterialBuffer { Material materials[]; };
-layout(std430, binding = 6) readonly buffer BLASNodeBuffer { BVHNode blasNodes[]; };
-layout(std430, binding = 7) readonly buffer InstanceBuffer { Instance instances[]; };
-layout(std430, binding = 8) readonly buffer TLASBuffer     { BVHNode tlasNodes[]; };
-layout(std430, binding = 9) readonly buffer LightBuffer    { Light lights[]; };
+layout(std430, binding = 2)  readonly buffer TrianglePositionBuffer  { TrianglePosition  positions[]; };  // BLAS, espace local
+layout(std430, binding = 3)  readonly buffer MaterialBuffer          { Material          materials[]; };
+layout(std430, binding = 6)  readonly buffer BLASNodeBuffer          { BVHNode           blasNodes[]; };
+layout(std430, binding = 7)  readonly buffer InstanceBuffer          { Instance          instances[]; };
+layout(std430, binding = 8)  readonly buffer TLASBuffer              { BVHNode           tlasNodes[]; };
+layout(std430, binding = 9)  readonly buffer LightBuffer             { Light             lights[]; };
+layout(std430, binding = 10) readonly buffer TriangleAttributeBuffer { TriangleAttribute attributes[]; }; // mêmes indices que positions[]
 
 // Binding 0 ici partage le même numéro que l'image u_Output (binding = 0 sur
 // `image2D`) : ce n'est PAS un conflit, les unités d'image et les unités de
@@ -119,17 +128,21 @@ float rand(inout uint seed) {
 // ---- Géométrie ----
 struct Ray { vec3 origin; vec3 dir; };
 
+// t/u/v (barycentriques) seulement — pas de normale/UV/matériau résolus ici :
+// ce serait du travail jeté pour tous les candidats non retenus. Voir
+// resolveHit(), appelée une seule fois sur le hit final gagnant.
 struct HitInfo {
     float t;
-    vec3  normal;
-    vec2  uv;
-    int   materialIndex;
+    float u, v;       // barycentriques (b0 = 1-u-v, b1 = u, b2 = v)
+    int   triIndex;    // index global dans positions[]/attributes[] (triOffset + local)
+    int   instanceIndex; // index dans instances[] ; -1 = pas encore résolu (rempli par intersectScene)
     bool  hit;
 };
 
-HitInfo intersectTriangle(Ray ray, Triangle tri) {
+HitInfo intersectTriangle(Ray ray, TrianglePosition tri, int globalIndex) {
     HitInfo info;
     info.hit = false;
+    info.instanceIndex = -1;
 
     vec3 v0 = tri.v0.xyz, v1 = tri.v1.xyz, v2 = tri.v2.xyz;
     vec3 e1 = v1 - v0, e2 = v2 - v0;
@@ -149,12 +162,11 @@ HitInfo intersectTriangle(Ray ray, Triangle tri) {
     float t = f * dot(e2, q);
     if (t < 1e-4) return info;
 
-    float w = 1.0 - u - v;
-    info.hit           = true;
-    info.t             = t;
-    info.normal        = normalize(w * tri.n0.xyz + u * tri.n1.xyz + v * tri.n2.xyz);
-    info.uv            = w * tri.uv0 + u * tri.uv1 + v * tri.uv2;
-    info.materialIndex = tri.materialIndex;
+    info.hit      = true;
+    info.t        = t;
+    info.u        = u;
+    info.v        = v;
+    info.triIndex = globalIndex;
     return info;
 }
 
@@ -195,7 +207,8 @@ HitInfo intersectBLAS(Ray ray, int nodeOffset, int triOffset) {
 
         if (node.triCount > 0) {
             for (int i = 0; i < node.triCount; ++i) {
-                HitInfo h = intersectTriangle(ray, triangles[triOffset + node.firstTri + i]);
+                int globalIdx = triOffset + node.firstTri + i;
+                HitInfo h = intersectTriangle(ray, positions[globalIdx], globalIdx);
                 if (h.hit && h.t < closest.t)
                     closest = h;
             }
@@ -209,12 +222,14 @@ HitInfo intersectBLAS(Ray ray, int nodeOffset, int triOffset) {
 }
 
 // Parcours du TLAS (espace monde) : pour chaque instance candidate, transforme
-// le rayon en espace local avant de descendre dans son BLAS, puis retransforme
-// le résultat (distance + normale) en espace monde.
+// le rayon en espace local avant de descendre dans son BLAS. Ne résout ni
+// normale ni matériau ici — seul instanceIndex est retenu, resolveHit() s'en
+// sert une fois le hit final déterminé (voir tracePath/traceRayTraced).
 HitInfo intersectScene(Ray ray) {
     HitInfo closest;
     closest.hit = false;
     closest.t   = 1e30;
+    closest.instanceIndex = -1;
 
     // triangleCount réutilisé comme "nombre d'instances" côté C++ : sert
     // juste à éviter de descendre dans un TLAS vide (nœud racine sentinelle).
@@ -255,9 +270,7 @@ HitInfo intersectScene(Ray ray) {
                 if (worldT < closest.t) {
                     closest = h;
                     closest.t = worldT;
-                    closest.materialIndex = inst.materialIndex;
-                    mat3 normalMat = mat3(transpose(inst.invTransform));
-                    closest.normal = normalize(normalMat * h.normal);
+                    closest.instanceIndex = node.firstTri + i;
                 }
             }
         } else {
@@ -290,7 +303,8 @@ bool intersectBLASAny(Ray ray, int nodeOffset, int triOffset, float maxDist) {
 
         if (node.triCount > 0) {
             for (int i = 0; i < node.triCount; ++i) {
-                HitInfo h = intersectTriangle(ray, triangles[triOffset + node.firstTri + i]);
+                int globalIdx = triOffset + node.firstTri + i;
+                HitInfo h = intersectTriangle(ray, positions[globalIdx], globalIdx);
                 if (h.hit && h.t < maxDist)
                     return true;
             }
@@ -427,6 +441,33 @@ vec3 sampleSky(vec3 dir) {
     return mix(vec3(1.0), vec3(0.5, 0.7, 1.0), t);
 }
 
+// Attributs de shading résolus pour LE hit final gagnant — jamais pour les
+// candidats intermédiaires écartés pendant la traversée.
+struct SurfaceHit {
+    vec3 normal;
+    vec2 uv;
+    int  materialIndex;
+};
+
+SurfaceHit resolveHit(HitInfo hit) {
+    TriangleAttribute attr = attributes[hit.triIndex];
+    float w = 1.0 - hit.u - hit.v;
+
+    vec3 localNormal = normalize(w * attr.n0.xyz + hit.u * attr.n1.xyz + hit.v * attr.n2.xyz);
+
+    Instance inst = instances[hit.instanceIndex];
+    mat3 normalMat = mat3(transpose(inst.invTransform));
+
+    SurfaceHit surf;
+    surf.normal        = normalize(normalMat * localNormal);
+    surf.uv             = w * attr.uv0 + hit.u * attr.uv1 + hit.v * attr.uv2;
+    // Le matériau vient de l'instance, pas du triangle (un BLAS peut être
+    // partagé par plusieurs instances aux matériaux différents) — voir le
+    // commentaire sur GPUTriangleAttribute::materialIndex.
+    surf.materialIndex = inst.materialIndex;
+    return surf;
+}
+
 // ---- Path tracing ----
 vec3 tracePath(Ray ray, inout uint seed) {
     vec3 radiance    = vec3(0.0);
@@ -440,9 +481,10 @@ vec3 tracePath(Ray ray, inout uint seed) {
             break;
         }
 
-        Material mat = materials[hit.materialIndex];
+        SurfaceHit surf = resolveHit(hit);
+        Material mat = materials[surf.materialIndex];
         vec3 albedo  = mat.albedo.rgb;
-        vec3 N       = hit.normal;
+        vec3 N       = surf.normal;
 
         // Point d'intersection réel, calculé AVANT toute réassignation de
         // ray.dir (les branches ci-dessous en avaient besoin après coup, ce
@@ -561,9 +603,10 @@ vec3 traceRayTraced(Ray ray) {
             break;
         }
 
-        Material mat      = materials[hit.materialIndex];
+        SurfaceHit surf   = resolveHit(hit);
+        Material mat      = materials[surf.materialIndex];
         vec3     albedo   = mat.albedo.rgb;
-        vec3     N        = hit.normal;
+        vec3     N        = surf.normal;
         vec3     hitPoint = ray.origin + ray.dir * hit.t;
 
         if (mat.emissive > 0.0) {

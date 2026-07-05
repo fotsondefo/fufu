@@ -2,9 +2,10 @@
 
 #pragma once
 #include <glm/glm.hpp>
+#include <vector>
 
 
-namespace Fufu 
+namespace Fufu
 {
 
 	// Structures miroir c�t� CPU de ce qui est envoy� au GPU via SSBO.
@@ -18,7 +19,12 @@ namespace Fufu
 		float     _pad[3];
 	};
 
-	struct alignas(16) GPUTriangle
+	// Format CPU intermédiaire (PAS un layout SSBO) : sert uniquement pendant
+	// la triangulation + BVHBuilder::build (qui réordonne ce vecteur en place
+	// pour que chaque feuille référence une plage contiguë). Une fois le BVH
+	// construit, splitTriangleBuffers() éclate ce format combiné en les deux
+	// buffers GPU réellement uploadés — voir GPUTrianglePosition/GPUTriangleAttribute.
+	struct GPUTriangle
 	{
 		glm::vec4 v0;           // xyz = position, w = unused
 		glm::vec4 v1;
@@ -32,6 +38,63 @@ namespace Fufu
 		int       materialIndex;
 		float     _pad;
 	};
+
+	// Buffer d'INTERSECTION : seul buffer lu par la traversée du BVH (boucle
+	// interne du path/ray tracer). 48 octets, alignement std430 déjà naturel
+	// (3x vec4) — pas de normales/UV/matériau ici, pour réduire le trafic
+	// mémoire pendant la partie la plus chaude du compute shader.
+	struct alignas(16) GPUTrianglePosition
+	{
+		glm::vec4 v0; // xyz = position, w inutilisé
+		glm::vec4 v1;
+		glm::vec4 v2;
+	};
+
+	// Buffer d'ATTRIBUTS : lu UNE seule fois, après avoir trouvé le point
+	// d'impact final du rayon (voir resolveHit() côté shader) — jamais
+	// pendant la traversée. materialIndex est un vestige : actuellement
+	// toujours écrasé par celui de l'instance (un BLAS peut être partagé par
+	// plusieurs instances aux matériaux différents), gardé pour un futur
+	// support du multi-matériau par mesh.
+	struct alignas(16) GPUTriangleAttribute
+	{
+		glm::vec4 n0;
+		glm::vec4 n1;
+		glm::vec4 n2;
+		glm::vec2 uv0;
+		glm::vec2 uv1;
+		glm::vec2 uv2;
+		int       materialIndex;
+		float     _pad;
+	};
+
+	// Éclate le format CPU combiné (post-BVHBuilder::build, donc déjà dans
+	// l'ordre des feuilles) en les deux buffers GPU — mêmes indices des deux
+	// côtés, donc resolveHit() peut réutiliser l'index trouvé pendant la
+	// traversée par position sans recalcul.
+	inline void splitTriangleBuffers(const std::vector<GPUTriangle>& combined,
+		std::vector<GPUTrianglePosition>& outPositions,
+		std::vector<GPUTriangleAttribute>& outAttributes)
+	{
+		outPositions.reserve(outPositions.size() + combined.size());
+		outAttributes.reserve(outAttributes.size() + combined.size());
+
+		for (const GPUTriangle& tri : combined)
+		{
+			GPUTrianglePosition pos{ tri.v0, tri.v1, tri.v2 };
+			outPositions.push_back(pos);
+
+			GPUTriangleAttribute attr{};
+			attr.n0 = tri.n0;
+			attr.n1 = tri.n1;
+			attr.n2 = tri.n2;
+			attr.uv0 = tri.uv0;
+			attr.uv1 = tri.uv1;
+			attr.uv2 = tri.uv2;
+			attr.materialIndex = tri.materialIndex;
+			outAttributes.push_back(attr);
+		}
+	}
 
 	// Une instance = un exemplaire d'un BLAS (mesh en espace local) avec sa
 	// propre transform et son propre matériau. blasNodeOffset/blasTriOffset

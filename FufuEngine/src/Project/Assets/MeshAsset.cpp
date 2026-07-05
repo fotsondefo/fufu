@@ -23,6 +23,53 @@ namespace Fufu
 		return m_LODLevels[idx];
 	}
 
+	const MeshBLAS& MeshAsset::getOrBuildBLAS(int lod) const
+	{
+		auto it = m_BLASCache.find(lod);
+		if (it != m_BLASCache.end())
+			return it->second;
+
+		// Format combiné temporaire : BVHBuilder::build a besoin d'un seul
+		// vecteur à réordonner en place (centroïdes/bounds calculés dessus).
+		// Éclaté en positions/attributs juste après (voir splitTriangleBuffers).
+		std::vector<GPUTriangle> combined;
+		for (const SubMesh& sub : getLODSubMeshes(lod))
+		{
+			for (std::size_t i = 0; i + 2 < sub.indices.size(); i += 3)
+			{
+				const Vertex& a = sub.vertices[sub.indices[i]];
+				const Vertex& b = sub.vertices[sub.indices[i + 1]];
+				const Vertex& c = sub.vertices[sub.indices[i + 2]];
+
+				GPUTriangle tri{};
+				tri.v0 = glm::vec4(a.position, 0.f);
+				tri.v1 = glm::vec4(b.position, 0.f);
+				tri.v2 = glm::vec4(c.position, 0.f);
+				tri.n0 = glm::vec4(a.normal, 0.f);
+				tri.n1 = glm::vec4(b.normal, 0.f);
+				tri.n2 = glm::vec4(c.normal, 0.f);
+				tri.uv0 = a.uv;
+				tri.uv1 = b.uv;
+				tri.uv2 = c.uv;
+				tri.materialIndex = 0; // le matériau vient de l'instance, pas du BLAS partagé
+				combined.push_back(tri);
+			}
+		}
+
+		MeshBLAS blas;
+		if (!combined.empty())
+		{
+			// Réordonne `combined` en place (feuilles contiguës) : on éclate
+			// APRÈS pour que positions/attributs partagent le même ordre/index.
+			blas.nodes = BVHBuilder::build(combined);
+			splitTriangleBuffers(combined, blas.positions, blas.attributes);
+		}
+
+		++m_BLASVersion;
+		auto result = m_BLASCache.emplace(lod, std::move(blas));
+		return result.first->second;
+	}
+
 	void MeshAsset::ensureLODsGenerated() const
 	{
 		if (m_LODsGenerated) return;
