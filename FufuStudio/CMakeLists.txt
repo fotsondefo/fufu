@@ -82,3 +82,13 @@ add_custom_command(TARGET FufuStudio POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:FufuStudio>/assets
     COMMENT "Création du dossier assets"
 )
+
+# Shaders moteur (compute path tracer, FXAA...) : fichiers .comp/.vert/.frag
+# séparés sous FufuEngine/shaders, copiés à côté de l'exécutable — voir
+# ShaderUtils::loadShaderSource qui les charge depuis là au runtime.
+add_custom_command(TARGET FufuStudio POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_SOURCE_DIR}/FufuEngine/shaders
+        $<TARGET_FILE_DIR:FufuStudio>/shaders
+    COMMENT "Copie des shaders moteur"
+)

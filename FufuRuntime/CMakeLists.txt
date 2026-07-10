@@ -26,9 +26,17 @@ target_compile_options(FufuRuntime PRIVATE
     $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-include ${CMAKE_SOURCE_DIR}/FufuEngine/src/depch.h>
 )
 
-# Copier les assets à côté de l'exécutable
+# Copier les assets ï¿½ cï¿½tï¿½ de l'exï¿½cutable
 add_custom_command(TARGET FufuRuntime POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory
         $<TARGET_FILE_DIR:FufuRuntime>/assets
-    COMMENT "Création du dossier assets Runtime"
+    COMMENT "Crï¿½ation du dossier assets Runtime"
+)
+
+# Shaders moteur (compute path tracer, FXAA...) : voir FufuStudio/CMakeLists.txt
+add_custom_command(TARGET FufuRuntime POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_SOURCE_DIR}/FufuEngine/shaders
+        $<TARGET_FILE_DIR:FufuRuntime>/shaders
+    COMMENT "Copie des shaders moteur (Runtime)"
 )

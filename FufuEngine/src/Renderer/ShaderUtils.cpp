@@ -1,8 +1,29 @@
 #include "depch.h"
 #include "Renderer/ShaderUtils.h"
+#include <fstream>
+#include <sstream>
 
 namespace Fufu
 {
+
+	std::string loadShaderSource(const std::filesystem::path& relativePath)
+	{
+		// CWD == dossier de l'exécutable dans ce projet (même convention que
+		// le dossier "config" de ProjectManager) : les .cpp/.vert/.frag/.comp
+		// sont copiés à côté par le build (voir CMakeLists.txt).
+		std::filesystem::path fullPath = std::filesystem::current_path() / "shaders" / relativePath;
+
+		std::ifstream file(fullPath);
+		if (!file.is_open())
+		{
+			FUFU_ERROR("loadShaderSource: fichier introuvable '{}'", fullPath.string());
+			return {};
+		}
+
+		std::stringstream buffer;
+		buffer << file.rdbuf();
+		return buffer.str();
+	}
 
 	uint32_t compileShader(uint32_t type, const std::string& source)
 	{

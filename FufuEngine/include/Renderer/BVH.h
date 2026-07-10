@@ -22,9 +22,12 @@ namespace Fufu
 	class BVHBuilder
 	{
 	public:
-		// BLAS : construit un BVH par split médian sur les triangles fournis
-		// (espace local). RÉORDONNE `triangles` en place pour que chaque
-		// feuille référence une plage contiguë [firstTri, firstTri+triCount).
+		// BLAS : construit un BVH par SAH binné (Surface Area Heuristic, voir
+		// BVH.cpp) sur les triangles fournis (espace local) — arbre nettement
+		// mieux équilibré par rapport à la géométrie réelle qu'un simple split
+		// médian, ce qui réduit le nombre de nœuds visités par rayon pendant la
+		// traversée. RÉORDONNE `triangles` en place pour que chaque feuille
+		// référence une plage contiguë [firstTri, firstTri+triCount).
 		static std::vector<GPUBVHNode> build(std::vector<GPUTriangle>& triangles, int leafSize = 4);
 
 		// TLAS : construit un BVH sur des boîtes englobantes fournies
