@@ -8,6 +8,12 @@
 namespace Fufu
 {
 
+	// Nombre maximum de textures albedo distinctes bindables en une frame
+	// (unités de texture 1..kMaxMaterialTextures, l'unité 0 étant réservée au
+	// skybox — voir ComputePass). Doit correspondre à la taille du tableau
+	// `u_MaterialTextures[]` dans PathTracer.comp.
+	constexpr int kMaxMaterialTextures = 16;
+
 	// Structures miroir c�t� CPU de ce qui est envoy� au GPU via SSBO.
 	// Alignement std430 strict � chaque champ respecte les r�gles d'alignement GLSL.
 

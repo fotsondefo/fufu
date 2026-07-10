@@ -45,6 +45,17 @@ namespace Fufu
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, skyboxTexture);
 
+		// Textures de matériau (albedo) : unités 1..kMaxMaterialTextures,
+		// l'unité 0 étant réservée au skybox. Les slots au-delà du nombre
+		// réellement actif ne sont jamais lus par le shader (voir
+		// GPUMaterial::albedoTexIdx), inutile de les nettoyer.
+		const auto& materialTextures = scene.getMaterialTextures();
+		for (std::size_t i = 0; i < materialTextures.size() && i < static_cast<std::size_t>(kMaxMaterialTextures); ++i)
+		{
+			glActiveTexture(GL_TEXTURE1 + static_cast<GLenum>(i));
+			glBindTexture(GL_TEXTURE_2D, materialTextures[i]);
+		}
+
 		scene.bind();
 
 		glBindBufferBase(GL_UNIFORM_BUFFER, 4, m_CameraUBO);

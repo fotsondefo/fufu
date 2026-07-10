@@ -1,5 +1,6 @@
 #include "depch.h"
 #include "Project/Assets/AssetManager.h"
+#include "Application/Application.h"
 #include <nlohmann/json.hpp>
 #include <assimp/Importer.hpp>
 #include <assimp/scene.h>
@@ -155,33 +156,86 @@ namespace Fufu
 
 	void AssetManager::loadAsset(std::shared_ptr<Asset>& asset)
 	{
+		// Synchrone : bascule immédiatement sur Loading, avant même que le
+		// job ne démarre — c'est ce qui empêche un appel getAsset<T>()
+		// concurrent (frame suivante) de redéclencher un second chargement.
 		asset->m_Meta.state = AssetState::Loading;
 
-		switch (asset->getType())
-		{
-		case AssetType::Texture:
-		{
-			auto tex = std::dynamic_pointer_cast<TextureAsset>(asset);
-			loadTexture(tex);
-			break;
-		}
-		case AssetType::Mesh:
-		{
-			auto mesh = std::dynamic_pointer_cast<MeshAsset>(asset);
-			loadMesh(mesh);
-			break;
-		}
-		case AssetType::Shader:
-		{
-			auto shader = std::dynamic_pointer_cast<ShaderAsset>(asset);
-			loadShader(shader);
-			break;
-		}
-		default: break;
-		}
+		std::shared_ptr<Asset> assetPtr = asset;
+		AssetType type = asset->getType();
+		auto success = std::make_shared<bool>(false);
+
+		Application::get().getJobSystem().submit(
+			// Thread de fond : ne remplit QUE les données CPU de l'asset
+			// (pixels, sous-maillages, BVH pré-chauffé) — ne touche jamais
+			// OpenGL ni m_Meta.state.
+			[this, assetPtr, type, success]()
+			{
+				switch (type)
+				{
+				case AssetType::Texture:
+				{
+					auto tex = std::dynamic_pointer_cast<TextureAsset>(assetPtr);
+					*success = loadTexture(tex);
+					break;
+				}
+				case AssetType::Mesh:
+				{
+					auto mesh = std::dynamic_pointer_cast<MeshAsset>(assetPtr);
+					*success = loadMesh(mesh);
+					if (*success)
+					{
+						// Pré-chauffe le BVH de chaque niveau de LOD en
+						// arrière-plan : sinon le premier upload GPU qui
+						// référence ce mesh ferait le build (SAH) sur le
+						// thread principal — exactement le gel qu'on cherche
+						// à éviter.
+						mesh->getOrBuildBLAS(0);
+						mesh->getOrBuildBLAS(1);
+						mesh->getOrBuildBLAS(2);
+					}
+					break;
+				}
+				case AssetType::Shader:
+				{
+					auto shader = std::dynamic_pointer_cast<ShaderAsset>(assetPtr);
+					*success = loadShader(shader);
+					break;
+				}
+				default:
+					break;
+				}
+			},
+			// Callback main-thread : SEUL endroit où m_Meta.state passe à
+			// Loaded/Failed — jamais lu/écrit depuis deux threads à la fois.
+			[assetPtr, success]()
+			{
+				assetPtr->m_Meta.state = *success ? AssetState::Loaded : AssetState::Failed;
+
+				// GPUScene::upload() ne tourne que si Scene::markDirty() a été
+				// appelé (voir Renderer::sceneNeedsUpdate) — sans ça, un mesh
+				// qui finit de charger APRÈS que l'entité a été créée (donc
+				// après le seul markDirty() de sa création) ne serait JAMAIS
+				// repris par le rendu : GPUScene l'avait ignoré pendant qu'il
+				// était encore en cours de chargement, et rien ne redemandait
+				// un re-upload une fois prêt. On ne sait pas ici quelle(s)
+				// scène(s) le référencent, donc on marque toutes celles
+				// chargées du projet actif — coût négligeable (un re-upload
+				// de plus, proportionnel aux entités, pas aux triangles).
+				if (*success)
+				{
+					auto& pm = Application::get().getProjectManager();
+					if (pm.hasProject())
+					{
+						for (auto& [name, scene] : pm.getCurrentProject().getSceneManager().getLoadedScenes())
+							scene->markDirty();
+					}
+				}
+			}
+		);
 	}
 
-	void AssetManager::loadTexture(std::shared_ptr<TextureAsset>& asset)
+	bool AssetManager::loadTexture(std::shared_ptr<TextureAsset>& asset)
 	{
 		const std::string path = asset->m_Meta.sourcePath.string();
 
@@ -210,8 +264,7 @@ namespace Fufu
 			if (!asset->m_Data.floatPixels)
 			{
 				FUFU_ERROR("TextureAsset: failed to load HDR '{}'", path);
-				asset->m_Meta.state = AssetState::Failed;
-				return;
+				return false;
 			}
 		}
 		else
@@ -227,18 +280,17 @@ namespace Fufu
 			if (!asset->m_Data.pixels)
 			{
 				FUFU_ERROR("TextureAsset: failed to load '{}'", path);
-				asset->m_Meta.state = AssetState::Failed;
-				return;
+				return false;
 			}
 		}
 
-		asset->m_Meta.state = AssetState::Loaded;
 		FUFU_INFO("Texture loaded: '{}' ({}x{} ch:{}{})",
 			path, asset->m_Data.width, asset->m_Data.height, asset->m_Data.channels,
 			asset->m_Data.isHDR ? ", HDR" : "");
+		return true;
 	}
 
-	void AssetManager::loadMesh(std::shared_ptr<MeshAsset>& asset)
+	bool AssetManager::loadMesh(std::shared_ptr<MeshAsset>& asset)
 	{
 		const std::string path = asset->m_Meta.sourcePath.string();
 
@@ -253,8 +305,7 @@ namespace Fufu
 		if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
 		{
 			FUFU_ERROR("MeshAsset: Assimp error for '{}': {}", path, importer.GetErrorString());
-			asset->m_Meta.state = AssetState::Failed;
-			return;
+			return false;
 		}
 
 		for (unsigned int m = 0; m < scene->mNumMeshes; ++m)
@@ -284,11 +335,11 @@ namespace Fufu
 			asset->m_SubMeshes.push_back(std::move(sub));
 		}
 
-		asset->m_Meta.state = AssetState::Loaded;
 		FUFU_INFO("Mesh loaded: '{}' ({} submeshes)", path, asset->m_SubMeshes.size());
+		return true;
 	}
 
-	void AssetManager::loadShader(std::shared_ptr<ShaderAsset>& asset)
+	bool AssetManager::loadShader(std::shared_ptr<ShaderAsset>& asset)
 	{
 		// sourcePath contains the path to the vertex shader
 		// The fragment shader is inferred from the .meta file 
@@ -305,8 +356,7 @@ namespace Fufu
 		if (!metaOpt.has_value())
 		{
 			FUFU_ERROR("ShaderAsset: no .meta for '{}'", asset->m_Meta.sourcePath.string());
-			asset->m_Meta.state = AssetState::Failed;
-			return;
+			return false;
 		}
 
 		json j;
@@ -322,12 +372,11 @@ namespace Fufu
 		if (asset->m_Sources.vertex.empty())
 		{
 			FUFU_ERROR("ShaderAsset: empty vertex source '{}'", asset->m_Meta.sourcePath.string());
-			asset->m_Meta.state = AssetState::Failed;
-			return;
+			return false;
 		}
 
-		asset->m_Meta.state = AssetState::Loaded;
 		FUFU_INFO("Shader loaded: '{}'", asset->m_Meta.sourcePath.string());
+		return true;
 	}
 
 	std::shared_ptr<TextureAsset> AssetManager::getTexture(const std::filesystem::path& path)

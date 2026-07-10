@@ -231,6 +231,18 @@ namespace FufuStudio
 			);
 		}
 
+		// Indicateur de chargement en arrière-plan (import de mesh/texture,
+		// construction de BVH — voir JobSystem/AssetManager) : sans ça, un
+		// objet lourd glissé dans la scène met plusieurs secondes à apparaître
+		// sans aucun retour visuel.
+		int pendingJobs = Fufu::Application::get().getJobSystem().getPendingJobCount();
+		if (pendingJobs > 0)
+		{
+			ImVec2 overlayPos = ImVec2(imagePos.x + 8.f, imagePos.y + 96.f);
+			std::string text = "Loading " + std::to_string(pendingJobs) + " asset(s)...";
+			ImGui::GetWindowDrawList()->AddText(overlayPos, IM_COL32(255, 210, 90, 220), text.c_str());
+		}
+
 		m_OrientationGizmo.render(state);
 		m_OrientationGizmo.handleShortcuts(state);
 

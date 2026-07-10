@@ -6,6 +6,7 @@
 #include "Events/ApplicationEvents.h"
 #include "Renderer/Renderer.h"
 #include "Project/ProjectManager.h"
+#include "Application/JobSystem.h"
 
 namespace Fufu 
 {
@@ -25,6 +26,7 @@ namespace Fufu
 		Window& getWindow() { return *m_Window; }
 		Renderer& getRenderer() { return m_Renderer; }
 		ProjectManager& getProjectManager() { return m_ProjectManager; }
+		JobSystem& getJobSystem() { return m_JobSystem; }
 
 	private:
 		void onEvent(Event& e);
@@ -36,6 +38,7 @@ namespace Fufu
 		LayerStack m_LayerStack;
 		Renderer m_Renderer;
 		ProjectManager m_ProjectManager;
+		JobSystem m_JobSystem;
 
 		bool m_Running = true;
 		bool m_Minimized = false;

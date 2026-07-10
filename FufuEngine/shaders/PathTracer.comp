@@ -73,6 +73,14 @@ layout(std430, binding = 10) readonly buffer TriangleAttributeBuffer { TriangleA
 // texture (sampler) sont deux espaces de binding distincts en GLSL/OpenGL.
 layout(binding = 0) uniform sampler2D u_Skybox;
 
+// Textures albedo des matériaux, unités 1..16 (voir Fufu::kMaxMaterialTextures
+// côté C++, doit rester synchronisé avec cette taille). GPUMaterial::albedoTexIdx
+// indexe ce tableau ; -1 = pas de texture, albedo uni utilisé à la place.
+// Index non-uniforme entre threads (chaque pixel peut toucher un matériau
+// différent) : nécessite GLSL >= 400 / gpu_shader5, déjà acquis avec les
+// compute shaders (core en 4.3).
+layout(binding = 1) uniform sampler2D u_MaterialTextures[16];
+
 layout(std140, binding = 4) uniform CameraBlock {
     vec4  camPosition;
     vec4  camForward;
@@ -455,6 +463,15 @@ SurfaceHit resolveHit(HitInfo hit) {
     return surf;
 }
 
+// Couleur albedo effective d'un matériau : échantillonne u_MaterialTextures[]
+// si une texture est assignée, sinon la couleur unie. Ne touche pas à
+// mat.albedo.a (opacité, utilisée telle quelle pour le verre/la réfraction).
+vec3 sampleAlbedo(Material mat, vec2 uv) {
+    if (mat.albedoTexIdx >= 0)
+        return texture(u_MaterialTextures[mat.albedoTexIdx], uv).rgb;
+    return mat.albedo.rgb;
+}
+
 // ---- Path tracing ----
 vec3 tracePath(Ray ray, inout uint seed) {
     vec3 radiance    = vec3(0.0);
@@ -470,7 +487,7 @@ vec3 tracePath(Ray ray, inout uint seed) {
 
         SurfaceHit surf = resolveHit(hit);
         Material mat = materials[surf.materialIndex];
-        vec3 albedo  = mat.albedo.rgb;
+        vec3 albedo  = sampleAlbedo(mat, surf.uv);
         vec3 N       = surf.normal;
 
         // Point d'intersection réel, calculé AVANT toute réassignation de
@@ -592,7 +609,7 @@ vec3 traceRayTraced(Ray ray) {
 
         SurfaceHit surf   = resolveHit(hit);
         Material mat      = materials[surf.materialIndex];
-        vec3     albedo   = mat.albedo.rgb;
+        vec3     albedo   = sampleAlbedo(mat, surf.uv);
         vec3     N        = surf.normal;
         vec3     hitPoint = ray.origin + ray.dir * hit.t;
 

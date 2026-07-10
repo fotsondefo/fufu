@@ -35,7 +35,19 @@ namespace Fufu
 		auto tex = assetManager.getTexture(settings.skyboxTexturePath);
 		if (!tex)
 		{
-			FUFU_ERROR("Skybox: failed to load texture '{}'", settings.skyboxTexturePath);
+			// getTexture() renvoie nullptr aussi bien pendant un chargement
+			// en arrière-plan encore en cours (voir JobSystem/AssetManager)
+			// qu'en cas d'échec réel — cette fonction tourne à chaque frame,
+			// donc on retentera automatiquement tant que ça charge, sans
+			// spammer le log. On ne logge qu'une fois si le chargement a
+			// vraiment échoué.
+			UUID uuid = assetManager.registerAsset(settings.skyboxTexturePath, AssetType::Texture);
+			if (assetManager.getAssetState(uuid) == AssetState::Failed &&
+				m_LastLoggedFailurePath != settings.skyboxTexturePath)
+			{
+				FUFU_ERROR("Skybox: failed to load texture '{}'", settings.skyboxTexturePath);
+				m_LastLoggedFailurePath = settings.skyboxTexturePath;
+			}
 			return;
 		}
 

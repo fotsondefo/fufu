@@ -17,6 +17,7 @@ namespace Fufu
 		m_Window->setEventCallback([this](Event& e) { onEvent(e); });
 
 		m_Renderer.init(props.width, props.height);
+		m_JobSystem.init();
 
 		std::filesystem::path appConfig = std::filesystem::current_path() / "config";
 		m_ProjectManager.init(appConfig);
@@ -24,6 +25,11 @@ namespace Fufu
 
 	Application::~Application()
 	{
+		// Joint tous les threads de fond AVANT de fermer le projet (qui
+		// détruit les assets) : évite qu'un job encore en cours touche un
+		// MeshAsset/TextureAsset pendant qu'il est libéré.
+		m_JobSystem.shutdown();
+
 		m_Renderer.shutdown();
 		m_ProjectManager.shutdown();
 	}
@@ -35,6 +41,11 @@ namespace Fufu
 			float time = static_cast<float>(glfwGetTime());
 			float deltaTime = time - m_LastFrameTime;
 			m_LastFrameTime = time;
+
+			// Applique les résultats des jobs de fond terminés depuis la
+			// frame précédente (upload GPU, mutation d'état...) — voir
+			// JobSystem : c'est le seul endroit où ces callbacks s'exécutent.
+			m_JobSystem.pollMainThreadCallbacks();
 
 			if (!m_Minimized)
 			{

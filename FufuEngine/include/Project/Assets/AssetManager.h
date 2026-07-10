@@ -51,6 +51,16 @@ namespace Fufu
 		bool   hasAsset(UUID uuid)  const { return m_Pool.count(uuid) > 0; }
 		size_t assetCount() const { return m_Pool.size(); }
 
+		// Permet à un appelant de distinguer "pas encore prêt, chargement en
+		// arrière-plan en cours" (Loading, retentera de lui-même) d'un
+		// véritable échec (Failed, inutile de réessayer) — les deux se
+		// traduisent par un getAsset<T>() qui renvoie nullptr.
+		AssetState getAssetState(UUID uuid) const
+		{
+			auto it = m_Pool.find(uuid);
+			return it != m_Pool.end() ? it->second->getMeta().state : AssetState::Unloaded;
+		}
+
 		const std::filesystem::path& getRootDir() const { return m_RootDir; }
 
 		const std::unordered_map<UUID, std::shared_ptr<Asset>>& getPool() const
@@ -62,10 +72,20 @@ namespace Fufu
 		std::optional<AssetMeta> readMeta(const std::filesystem::path& path) const;
 
 	private:
+		// Déclenche le chargement en arrière-plan (voir JobSystem) : bascule
+		// l'état sur Loading immédiatement (synchrone), puis soumet un job qui
+		// remplit les données CPU de l'asset et ne bascule l'état sur
+		// Loaded/Failed QUE via son callback main-thread — jamais depuis le
+		// thread de fond, pour ne jamais lire/écrire m_Meta.state depuis deux
+		// threads à la fois.
 		void loadAsset(std::shared_ptr<Asset>& asset);
-		void loadTexture(std::shared_ptr<TextureAsset>& asset);
-		void loadMesh(std::shared_ptr<MeshAsset>&    asset);
-		void loadShader(std::shared_ptr<ShaderAsset>&  asset);
+
+		// Remplissent les données CPU de l'asset et renvoient true en cas de
+		// succès — NE touchent PAS m_Meta.state (voir loadAsset). Appelées
+		// depuis un thread de fond : ne doivent jamais toucher OpenGL.
+		bool loadTexture(std::shared_ptr<TextureAsset>& asset);
+		bool loadMesh(std::shared_ptr<MeshAsset>&    asset);
+		bool loadShader(std::shared_ptr<ShaderAsset>&  asset);
 
 		AssetType inferTypeFromExtension(const std::filesystem::path& path) const;
 		std::filesystem::path metaPath(const std::filesystem::path& sourcePath) const;

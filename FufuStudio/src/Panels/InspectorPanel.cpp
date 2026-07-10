@@ -1,5 +1,6 @@
 #include "Panels/InspectorPanel.h"
 #include <Project/Components.h>
+#include <Project/Assets/TextureAsset.h>
 #include "Application/Application.h"
 #include <imgui.h>
 #include <glm/gtc/type_ptr.hpp>
@@ -249,6 +250,42 @@ namespace FufuStudio
 		trackEdit(entity, m_PendingMaterial, state);
 		if (ImGui::SliderFloat("Emissive##mat", &mat.emissive, 0.f, 20.f)) changed = true;
 		trackEdit(entity, m_PendingMaterial, state);
+
+		// Texture albedo : glisser un asset Texture pour l'assigner (voir
+		// GPUScene::resolveAlbedoTexture côté rendu).
+		ImGui::Spacing();
+		ImGui::Text("Albedo Texture");
+
+		std::string texLabel = "(none)";
+		if (mat.albedoTexID != 0)
+		{
+			auto& pm = Fufu::Application::get().getProjectManager();
+			if (pm.hasProject())
+			{
+				if (auto tex = pm.getCurrentProject().getAssetManager().getAsset<Fufu::TextureAsset>(Fufu::UUID(mat.albedoTexID)))
+					texLabel = tex->getMeta().sourcePath.filename().string();
+				else
+					texLabel = "(missing)";
+			}
+		}
+		ImGui::TextDisabled("%s", texLabel.c_str());
+
+		ImGui::Button(ICON_FA_FILE_IMAGE_O " Drop texture here##albedotex", ImVec2(-1, 26.f));
+		if (ImGui::BeginDragDropTarget())
+		{
+			if (auto meta = acceptAssetDrop(); meta && meta->type == Fufu::AssetType::Texture)
+			{
+				mat.albedoTexID = meta->uuid.value();
+				changed = true;
+			}
+			ImGui::EndDragDropTarget();
+		}
+
+		if (mat.albedoTexID != 0 && ImGui::SmallButton("Clear Texture"))
+		{
+			mat.albedoTexID = 0;
+			changed = true;
+		}
 
 		if (changed)
 		{

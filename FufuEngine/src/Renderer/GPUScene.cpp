@@ -53,6 +53,80 @@ namespace Fufu
 		glDeleteBuffers(1, &m_InstanceSSBO);
 		glDeleteBuffers(1, &m_TLASNodeSSBO);
 		glDeleteBuffers(1, &m_LightSSBO);
+
+		for (auto& [path, texId] : m_MaterialTextureCache)
+			glDeleteTextures(1, &texId);
+		m_MaterialTextureCache.clear();
+	}
+
+	int GPUScene::resolveAlbedoTexture(uint64_t textureUUID, AssetManager& assetManager,
+		std::unordered_map<std::string, int>& frameSlots)
+	{
+		if (textureUUID == 0) return -1;
+
+		auto texAsset = assetManager.getAsset<TextureAsset>(UUID(textureUUID));
+		if (!texAsset) return -1; // introuvable/échec de chargement : retombe sur l'albedo uni
+
+		std::string path = texAsset->getMeta().sourcePath.string();
+
+		auto slotIt = frameSlots.find(path);
+		if (slotIt != frameSlots.end())
+			return slotIt->second; // déjà bindée cette frame (autre matériau, même texture)
+
+		if (static_cast<int>(m_ActiveMaterialTextures.size()) >= kMaxMaterialTextures)
+		{
+			FUFU_WARN("GPUScene: texture limit reached ({}) for material textures, '{}' ignored", kMaxMaterialTextures, path);
+			return -1;
+		}
+
+		auto cacheIt = m_MaterialTextureCache.find(path);
+		uint32_t glTex;
+		if (cacheIt != m_MaterialTextureCache.end())
+		{
+			glTex = cacheIt->second;
+		}
+		else
+		{
+			glGenTextures(1, &glTex);
+			glBindTexture(GL_TEXTURE_2D, glTex);
+
+			// Lignes non alignées sur 4 octets (RGB 8 bits, largeur non
+			// multiple de 4) : sans ça, glTexImage2D corrompt l'image lue.
+			glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
+			if (texAsset->isHDR())
+			{
+				GLenum format = (texAsset->getChannels() >= 4) ? GL_RGBA : GL_RGB;
+				GLenum internalFormat = (texAsset->getChannels() >= 4) ? GL_RGBA32F : GL_RGB32F;
+				glTexImage2D(GL_TEXTURE_2D, 0, internalFormat, texAsset->getWidth(), texAsset->getHeight(), 0,
+					format, GL_FLOAT, texAsset->getFloatPixels());
+			}
+			else
+			{
+				GLenum format = (texAsset->getChannels() >= 4) ? GL_RGBA : (texAsset->getChannels() == 1 ? GL_RED : GL_RGB);
+				GLenum internalFormat = (texAsset->getChannels() >= 4) ? GL_RGBA8 : (texAsset->getChannels() == 1 ? GL_R8 : GL_RGB8);
+				glTexImage2D(GL_TEXTURE_2D, 0, internalFormat, texAsset->getWidth(), texAsset->getHeight(), 0,
+					format, GL_UNSIGNED_BYTE, texAsset->getPixels());
+			}
+
+			glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+
+			// Pas de mipmaps : texture() dans un compute shader (pas de
+			// dérivées automatiques hors fragment shader) échantillonne
+			// toujours le niveau 0 de toute façon.
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+			m_MaterialTextureCache.emplace(path, glTex);
+			FUFU_INFO("GPUScene: material texture loaded '{}' ({}x{})", path, texAsset->getWidth(), texAsset->getHeight());
+		}
+
+		int slot = static_cast<int>(m_ActiveMaterialTextures.size());
+		m_ActiveMaterialTextures.push_back(glTex);
+		frameSlots.emplace(std::move(path), slot);
+		return slot;
 	}
 
 	void GPUScene::upload(Scene& scene)
@@ -219,6 +293,8 @@ namespace Fufu
 
 		m_Materials.clear();
 		m_Instances.clear();
+		m_ActiveMaterialTextures.clear();
+		std::unordered_map<std::string, int> frameTextureSlots;
 
 		scene.each<TransformComponent, MeshComponent, MaterialComponent>(
 			[&](entt::entity /*e*/, TransformComponent& transform, MeshComponent& meshComp, MaterialComponent& matComp)
@@ -237,7 +313,7 @@ namespace Fufu
 			gpuMat.roughness = matComp.roughness;
 			gpuMat.emissive = matComp.emissive;
 			gpuMat.ior = 1.5f;
-			gpuMat.albedoTexIdx = -1;
+			gpuMat.albedoTexIdx = resolveAlbedoTexture(matComp.albedoTexID, am, frameTextureSlots);
 			m_Materials.push_back(gpuMat);
 
 			GPUInstance inst{};

@@ -28,5 +28,10 @@ namespace Fufu
 	private:
 		uint32_t    m_TextureID = 0;
 		std::string m_LoadedPath;
+
+		// Évite de spammer le log à chaque frame tant qu'un échec de
+		// chargement (pas juste "encore en cours") n'a pas déjà été signalé
+		// pour ce chemin — voir update().
+		std::string m_LastLoggedFailurePath;
 	};
 }
