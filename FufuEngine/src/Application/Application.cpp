@@ -1,5 +1,6 @@
 #include "depch.h"
 #include "Application/Application.h"
+#include "Application/Profiler.h"
 #include "Events/ApplicationEvents.h"
 #include <GLFW/glfw3.h>
 
@@ -18,6 +19,7 @@ namespace Fufu
 
 		m_Renderer.init(props.width, props.height);
 		m_JobSystem.init();
+		Profiler::get().init();
 
 		std::filesystem::path appConfig = std::filesystem::current_path() / "config";
 		m_ProjectManager.init(appConfig);
@@ -30,6 +32,7 @@ namespace Fufu
 		// MeshAsset/TextureAsset pendant qu'il est libéré.
 		m_JobSystem.shutdown();
 
+		Profiler::get().shutdown();
 		m_Renderer.shutdown();
 		m_ProjectManager.shutdown();
 	}
@@ -47,6 +50,8 @@ namespace Fufu
 			// JobSystem : c'est le seul endroit où ces callbacks s'exécutent.
 			m_JobSystem.pollMainThreadCallbacks();
 
+			Profiler::get().beginFrame();
+
 			if (!m_Minimized)
 			{
 				for (ILayer* layer : m_LayerStack)
@@ -54,6 +59,8 @@ namespace Fufu
 			}
 
 			m_Window->onUpdate();
+
+			Profiler::get().endFrame();
 		}
 	}
 

@@ -9,6 +9,7 @@
 #include "Panels/InspectorPanel.h"
 #include "Panels/ImGuiContext.h"
 #include "Panels/ProjectPanel.h"
+#include "Panels/ProfilerPanel.h"
 #include "Screens/WelcomeScreen.h"
 #include "Helpers/TitleBar.h"
 
@@ -38,7 +39,8 @@ namespace FufuStudio
 		HierarchyPanel  m_HierarchyPanel;
 		InspectorPanel  m_InspectorPanel;
 		ProjectPanel m_ProjectPanel;
-		
+		ProfilerPanel m_ProfilerPanel;
+
 		WelcomeScreen m_WelcomeScreen;
 		TitleBar m_TitleBar;
 

@@ -15,6 +15,7 @@ namespace FufuStudio
 		: Fufu::ILayer("StudioLayer")
 		, m_ViewportPanel(Fufu::Application::get().getRenderer())
 		, m_RendererSettingsPanel(Fufu::Application::get().getRenderer())
+		, m_ProfilerPanel(Fufu::Application::get().getRenderer())
 	{
 		m_State.commandHistory = &m_CommandHistory;
 	}
@@ -68,6 +69,7 @@ namespace FufuStudio
 		m_HierarchyPanel.onImGuiRender(m_State);
 		m_InspectorPanel.onImGuiRender(m_State);
 		m_ProjectPanel.onImGuiRender(m_State);
+		m_ProfilerPanel.onImGuiRender(m_State);
 
 		m_ImGuiContext.endFrame();
 	}

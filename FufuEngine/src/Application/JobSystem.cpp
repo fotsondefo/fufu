@@ -13,9 +13,15 @@ namespace Fufu
 		}
 
 		m_Stop = false;
+
+		// Construit avec sa taille finale d'un coup : un vector<atomic<bool>>
+		// ne peut pas être réalloué (atomic n'est ni copiable ni déplaçable),
+		// donc pas de reserve()+emplace_back() progressif comme pour m_Workers.
+		m_WorkerBusy = std::vector<std::atomic<bool>>(static_cast<std::size_t>(threadCount));
+
 		m_Workers.reserve(static_cast<std::size_t>(threadCount));
 		for (int i = 0; i < threadCount; ++i)
-			m_Workers.emplace_back([this]() { workerLoop(); });
+			m_Workers.emplace_back([this, i]() { workerLoop(i); });
 
 		FUFU_INFO("JobSystem: {} background thread(s) just started", threadCount);
 	}
@@ -44,7 +50,7 @@ namespace Fufu
 		m_PendingCV.notify_one();
 	}
 
-	void JobSystem::workerLoop()
+	void JobSystem::workerLoop(int index)
 	{
 		for (;;)
 		{
@@ -60,8 +66,10 @@ namespace Fufu
 				m_PendingQueue.pop();
 			}
 
+			m_WorkerBusy[static_cast<std::size_t>(index)] = true;
 			if (job.work)
 				job.work();
+			m_WorkerBusy[static_cast<std::size_t>(index)] = false;
 
 			if (job.onMainThread)
 			{

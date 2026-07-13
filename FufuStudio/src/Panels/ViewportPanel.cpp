@@ -3,6 +3,7 @@
 #include <imgui.h>
 #include <GLFW/glfw3.h>
 #include <Application/Application.h>
+#include <Application/Profiler.h>
 #include <Project/Components.h>
 #include <Project/Assets/PrimitiveMeshes.h>
 #include <algorithm>
@@ -241,6 +242,18 @@ namespace FufuStudio
 			ImVec2 overlayPos = ImVec2(imagePos.x + 8.f, imagePos.y + 96.f);
 			std::string text = "Loading " + std::to_string(pendingJobs) + " asset(s)...";
 			ImGui::GetWindowDrawList()->AddText(overlayPos, IM_COL32(255, 210, 90, 220), text.c_str());
+		}
+
+		// FPS / temps de frame, en bas à gauche du viewport (voir Fufu::Profiler,
+		// mesuré autour de toute la frame dans Application::run()).
+		{
+			const auto& profilerFrame = Fufu::Profiler::get().getCurrentFrame();
+			char fpsText[64];
+			snprintf(fpsText, sizeof(fpsText), "%.0f FPS \xC2\xB7 %.2f ms",
+				Fufu::Profiler::get().getFPS(), profilerFrame.cpuFrameTimeMs);
+
+			ImVec2 overlayPos = ImVec2(imagePos.x + 8.f, imagePos.y + viewportSize.y - 24.f);
+			ImGui::GetWindowDrawList()->AddText(overlayPos, IM_COL32(255, 255, 255, 220), fpsText);
 		}
 
 		m_OrientationGizmo.render(state);

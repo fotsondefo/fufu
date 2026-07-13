@@ -1,6 +1,7 @@
 #include "depch.h"
 #include "Renderer/Passes/ComputePass.h"
 #include "Renderer/ShaderUtils.h"
+#include "Application/Profiler.h"
 
 namespace Fufu
 {
@@ -64,10 +65,13 @@ namespace Fufu
 		// Dispatch à groupes de 16x16
 		int gx = (width + 15) / 16;
 		int gy = (height + 15) / 16;
+
+		Profiler::get().beginGPU("ComputePass");
 		glDispatchCompute(gx, gy, 1);
 
 		// Barrière avant lecture par un pass suivant (FXAA) ou par ImGui.
 		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+		Profiler::get().endGPU("ComputePass");
 	}
 
 }

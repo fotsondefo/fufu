@@ -42,8 +42,16 @@ namespace Fufu
 		// indicateur de chargement dans l'éditeur.
 		int getPendingJobCount() const { return m_PendingJobs.load(); }
 
+		// Pour un graphe/timeline des threads de fond (voir ProfilerPanel) :
+		// nombre de workers, et si chacun exécute un job en ce moment.
+		int  getWorkerCount() const { return static_cast<int>(m_WorkerBusy.size()); }
+		bool isWorkerBusy(int index) const
+		{
+			return index >= 0 && index < static_cast<int>(m_WorkerBusy.size()) && m_WorkerBusy[static_cast<std::size_t>(index)].load();
+		}
+
 	private:
-		void workerLoop();
+		void workerLoop(int index);
 
 		struct Job
 		{
@@ -52,6 +60,7 @@ namespace Fufu
 		};
 
 		std::vector<std::thread> m_Workers;
+		std::vector<std::atomic<bool>> m_WorkerBusy; // indexé comme m_Workers, construit une fois (jamais réalloué)
 		std::atomic<bool> m_Stop{ false };
 
 		std::queue<Job> m_PendingQueue;

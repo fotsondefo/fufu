@@ -1,6 +1,7 @@
 #include "depch.h"
 #include "Renderer/Passes/FXAAPass.h"
 #include "Renderer/ShaderUtils.h"
+#include "Application/Profiler.h"
 
 namespace Fufu
 {
@@ -66,9 +67,11 @@ namespace Fufu
 		glUniform2f(glGetUniformLocation(m_Program, "u_TexelSize"),
 			1.f / static_cast<float>(width), 1.f / static_cast<float>(height));
 
+		Profiler::get().beginGPU("FXAAPass");
 		glBindVertexArray(quadVAO);
 		glDrawArrays(GL_TRIANGLES, 0, 6);
 		glBindVertexArray(0);
+		Profiler::get().endGPU("FXAAPass");
 
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	}

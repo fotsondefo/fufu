@@ -3,6 +3,7 @@
 #include "Renderer/Renderer.h"
 #include "Project/Components.h"
 #include "Application/Application.h"
+#include "Application/Profiler.h"
 #include <algorithm>
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <stb_image_write.h>
@@ -148,8 +149,14 @@ namespace Fufu
 		m_ComputePass.execute(m_GPUScene, gpuCam, frameData, m_OutputTexture, m_AccumTexture,
 			m_Skybox.getTextureID(), m_Width, m_Height);
 
+		int drawCalls = 1; // le dispatch compute
 		if (m_Settings.aaMode == AAMode::FXAA)
+		{
 			m_FXAAPass.execute(m_OutputTexture, m_QuadVAO, m_Width, m_Height);
+			++drawCalls;
+		}
+
+		Profiler::get().setCounters(m_GPUScene.getTriangleCount(), m_GPUScene.getInstanceCount(), drawCalls);
 
 		// Incr�menter uniquement en accumulation et si pas � la limite
 		if (m_Settings.mode == RenderMode::Accumulation &&

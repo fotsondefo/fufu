@@ -190,15 +190,11 @@ HitInfo intersectBLAS(Ray ray, int nodeOffset, int triOffset) {
 
     int stack[32];
     int stackPtr = 0;
-    stack[stackPtr++] = 0; // racine du BLAS (index local)
+    stack[stackPtr++] = 0;
 
     while (stackPtr > 0) {
         int localIdx = stack[--stackPtr];
         BVHNode node = blasNodes[nodeOffset + localIdx];
-
-        float tNear;
-        if (!intersectAABB(ray, node.boundsMin.xyz, node.boundsMax.xyz, tNear)) continue;
-        if (tNear > closest.t) continue;
 
         if (node.triCount > 0) {
             for (int i = 0; i < node.triCount; ++i) {
@@ -208,8 +204,27 @@ HitInfo intersectBLAS(Ray ray, int nodeOffset, int triOffset) {
                     closest = h;
             }
         } else {
-            stack[stackPtr++] = node.left;
-            stack[stackPtr++] = node.right;
+            BVHNode childL = blasNodes[nodeOffset + node.left];
+            BVHNode childR = blasNodes[nodeOffset + node.right];
+            float tLeft, tRight;
+            bool hitLeft  = intersectAABB(ray, childL.boundsMin.xyz, childL.boundsMax.xyz, tLeft)
+                            && tLeft <= closest.t;
+            bool hitRight = intersectAABB(ray, childR.boundsMin.xyz, childR.boundsMax.xyz, tRight)
+                            && tRight <= closest.t;
+
+            if (hitLeft && hitRight) {
+                if (tLeft < tRight) {
+                    stack[stackPtr++] = node.right;
+                    stack[stackPtr++] = node.left;
+                } else {
+                    stack[stackPtr++] = node.left;
+                    stack[stackPtr++] = node.right;
+                }
+            } else if (hitLeft) {
+                stack[stackPtr++] = node.left;
+            } else if (hitRight) {
+                stack[stackPtr++] = node.right;
+            }
         }
     }
 
@@ -226,24 +241,17 @@ HitInfo intersectScene(Ray ray) {
     closest.t   = 1e30;
     closest.instanceIndex = -1;
 
-    // triangleCount réutilisé comme "nombre d'instances" côté C++ : sert
-    // juste à éviter de descendre dans un TLAS vide (nœud racine sentinelle).
     if (triangleCount <= 0) return closest;
 
     int stack[64];
     int stackPtr = 0;
-    stack[stackPtr++] = 0; // racine du TLAS
+    stack[stackPtr++] = 0;
 
     while (stackPtr > 0) {
         int nodeIdx = stack[--stackPtr];
         BVHNode node = tlasNodes[nodeIdx];
 
-        float tNear;
-        if (!intersectAABB(ray, node.boundsMin.xyz, node.boundsMax.xyz, tNear)) continue;
-        if (tNear > closest.t) continue;
-
         if (node.triCount > 0) {
-            // Feuille du TLAS : firstTri/triCount indexent des INSTANCES ici
             for (int i = 0; i < node.triCount; ++i) {
                 Instance inst = instances[node.firstTri + i];
 
@@ -259,8 +267,6 @@ HitInfo intersectScene(Ray ray) {
                 HitInfo h = intersectBLAS(localRay, inst.blasNodeOffset, inst.blasTriOffset);
                 if (!h.hit) continue;
 
-                // t était mesuré en espace local (rayon normalisé localement) :
-                // reconvertir en distance monde avant de comparer.
                 float worldT = h.t / dirLen;
                 if (worldT < closest.t) {
                     closest = h;
@@ -269,8 +275,27 @@ HitInfo intersectScene(Ray ray) {
                 }
             }
         } else {
-            stack[stackPtr++] = node.left;
-            stack[stackPtr++] = node.right;
+            BVHNode childL = tlasNodes[node.left];
+            BVHNode childR = tlasNodes[node.right];
+            float tLeft, tRight;
+            bool hitLeft  = intersectAABB(ray, childL.boundsMin.xyz, childL.boundsMax.xyz, tLeft)
+                            && tLeft <= closest.t;
+            bool hitRight = intersectAABB(ray, childR.boundsMin.xyz, childR.boundsMax.xyz, tRight)
+                            && tRight <= closest.t;
+
+            if (hitLeft && hitRight) {
+                if (tLeft < tRight) {
+                    stack[stackPtr++] = node.right;
+                    stack[stackPtr++] = node.left;
+                } else {
+                    stack[stackPtr++] = node.left;
+                    stack[stackPtr++] = node.right;
+                }
+            } else if (hitLeft) {
+                stack[stackPtr++] = node.left;
+            } else if (hitRight) {
+                stack[stackPtr++] = node.right;
+            }
         }
     }
 
@@ -292,10 +317,6 @@ bool intersectBLASAny(Ray ray, int nodeOffset, int triOffset, float maxDist) {
         int localIdx = stack[--stackPtr];
         BVHNode node = blasNodes[nodeOffset + localIdx];
 
-        float tNear;
-        if (!intersectAABB(ray, node.boundsMin.xyz, node.boundsMax.xyz, tNear)) continue;
-        if (tNear > maxDist) continue;
-
         if (node.triCount > 0) {
             for (int i = 0; i < node.triCount; ++i) {
                 int globalIdx = triOffset + node.firstTri + i;
@@ -304,8 +325,27 @@ bool intersectBLASAny(Ray ray, int nodeOffset, int triOffset, float maxDist) {
                     return true;
             }
         } else {
-            stack[stackPtr++] = node.left;
-            stack[stackPtr++] = node.right;
+            BVHNode childL = blasNodes[nodeOffset + node.left];
+            BVHNode childR = blasNodes[nodeOffset + node.right];
+            float tLeft, tRight;
+            bool hitLeft  = intersectAABB(ray, childL.boundsMin.xyz, childL.boundsMax.xyz, tLeft)
+                            && tLeft <= maxDist;
+            bool hitRight = intersectAABB(ray, childR.boundsMin.xyz, childR.boundsMax.xyz, tRight)
+                            && tRight <= maxDist;
+
+            if (hitLeft && hitRight) {
+                if (tLeft < tRight) {
+                    stack[stackPtr++] = node.right;
+                    stack[stackPtr++] = node.left;
+                } else {
+                    stack[stackPtr++] = node.left;
+                    stack[stackPtr++] = node.right;
+                }
+            } else if (hitLeft) {
+                stack[stackPtr++] = node.left;
+            } else if (hitRight) {
+                stack[stackPtr++] = node.right;
+            }
         }
     }
 
@@ -320,7 +360,7 @@ bool intersectBLASAny(Ray ray, int nodeOffset, int triOffset, float maxDist) {
 // la distance jusqu'à la source pour une point light (ne pas compter ce qui
 // est derrière la lumière comme un obstacle).
 bool intersectSceneShadow(Ray ray, float maxDistWorld) {
-    if (triangleCount <= 0) return false; // triangleCount réutilisé comme "nombre d'instances"
+    if (triangleCount <= 0) return false;
 
     int stack[64];
     int stackPtr = 0;
@@ -329,10 +369,6 @@ bool intersectSceneShadow(Ray ray, float maxDistWorld) {
     while (stackPtr > 0) {
         int nodeIdx = stack[--stackPtr];
         BVHNode node = tlasNodes[nodeIdx];
-
-        float tNear;
-        if (!intersectAABB(ray, node.boundsMin.xyz, node.boundsMax.xyz, tNear)) continue;
-        if (tNear > maxDistWorld) continue;
 
         if (node.triCount > 0) {
             for (int i = 0; i < node.triCount; ++i) {
@@ -347,16 +383,33 @@ bool intersectSceneShadow(Ray ray, float maxDistWorld) {
                 localRay.origin = localOrigin;
                 localRay.dir    = localDirRaw / dirLen;
 
-                // maxDist est mesuré en espace local (rayon normalisé
-                // localement) : même conversion que dans intersectScene.
                 float localMaxDist = (maxDistWorld >= 1e29) ? 1e30 : maxDistWorld * dirLen;
 
                 if (intersectBLASAny(localRay, inst.blasNodeOffset, inst.blasTriOffset, localMaxDist))
                     return true;
             }
         } else {
-            stack[stackPtr++] = node.left;
-            stack[stackPtr++] = node.right;
+            BVHNode childL = tlasNodes[node.left];
+            BVHNode childR = tlasNodes[node.right];
+            float tLeft, tRight;
+            bool hitLeft  = intersectAABB(ray, childL.boundsMin.xyz, childL.boundsMax.xyz, tLeft)
+                            && tLeft <= maxDistWorld;
+            bool hitRight = intersectAABB(ray, childR.boundsMin.xyz, childR.boundsMax.xyz, tRight)
+                            && tRight <= maxDistWorld;
+
+            if (hitLeft && hitRight) {
+                if (tLeft < tRight) {
+                    stack[stackPtr++] = node.right;
+                    stack[stackPtr++] = node.left;
+                } else {
+                    stack[stackPtr++] = node.left;
+                    stack[stackPtr++] = node.right;
+                }
+            } else if (hitLeft) {
+                stack[stackPtr++] = node.left;
+            } else if (hitRight) {
+                stack[stackPtr++] = node.right;
+            }
         }
     }
 

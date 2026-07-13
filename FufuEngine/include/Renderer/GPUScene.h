@@ -49,6 +49,12 @@ namespace Fufu
 		int getMaterialCount() const { return static_cast<int>(m_Materials.size()); }
 		int getLightCount()    const { return static_cast<int>(m_Lights.size()); }
 
+		// Triangles UNIQUES dans les BLAS concaténés — pas multiplié par le
+		// nombre d'instances (voir ProfilerPanel : "triangles totaux" côté
+		// scène GPU, ce n'est pas la même notion que le nombre de triangles
+		// effectivement traversés par un rayon).
+		int getTriangleCount() const { return static_cast<int>(m_TrianglePositions.size()); }
+
 		// Textures albedo référencées par les matériaux de cette frame, dans
 		// l'ordre attendu par u_MaterialTextures[] côté shader (index i ici <->
 		// GPUMaterial::albedoTexIdx == i pour les matériaux qui l'utilisent).
