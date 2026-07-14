@@ -44,6 +44,21 @@ namespace FufuLab
             return;
         }
 
+        // Navigation caméra (avant le rendu pour que la position soit à jour)
+        if (m_ActiveScene && m_ViewportFocused)
+        {
+            bool moved = m_CameraController.onUpdate(deltaTime, true);
+            if (moved)
+            {
+                m_CameraController.syncToScene(*m_ActiveScene);
+                m_Renderer.resetAccumulation();
+            }
+        }
+        else
+        {
+            m_CameraController.onUpdate(deltaTime, false);
+        }
+
         // Rendu de la scène active
         if (m_ActiveScene)
         {
@@ -196,6 +211,9 @@ namespace FufuLab
 
     void LabLayer::renderViewport()
     {
+        m_ViewportFocused = ImGui::IsWindowFocused();
+        m_ViewportHovered = ImGui::IsWindowHovered();
+
         ImVec2 avail = ImGui::GetContentRegionAvail();
         if (avail.x > 1.f && avail.y > 1.f)
         {
@@ -299,6 +317,8 @@ namespace FufuLab
 
         m_ActiveScene     = it->second;
         m_ActiveSceneName = sceneName;
+
+        m_CameraController.syncFromScene(*m_ActiveScene);
 
         if (m_ActiveDemo)
             m_ActiveDemo->onAttach(*m_ActiveScene);

@@ -18,12 +18,6 @@ namespace FufuStudio
 	{
 		Selection selection;
 
-		// Camera
-		glm::vec3 cameraPosition = { 0.f, 1.f, 5.f };
-		glm::vec3 cameraRotation = { 0.f, 0.f, 0.f }; // pitch, yaw, roll en radians
-		float     cameraMoveSpeed = 5.f;
-		float     cameraLookSpeed = 0.1f;
-
 		// Viewport
 		// viewportPos = coin haut-gauche de l'IMAGE rendue en coordonnées écran
 		// (pas la fenêtre ImGui du panneau, qui inclut sa propre barre de titre).
@@ -56,25 +50,14 @@ namespace FufuStudio
 		}
 
 		// À appeler une fois juste après qu'une scène devient active (création,
-		// ouverture, switch dans le ProjectPanel...). ViewportPanel::syncCameraToScene
-		// pousse `cameraPosition`/`cameraRotation` vers l'entité caméra à CHAQUE
-		// frame ; sans cet appel, ces valeurs resteraient celles de la scène
-		// précédente et écraseraient dès la frame suivante la position/rotation
-		// qu'on vient pourtant de charger depuis le fichier. On récupère donc ici
-		// la transform déjà chargée (elle round-trip normalement via
-		// TransformComponent, pas besoin de la stocker séparément), et on pousse
-		// aussi les RenderSettings sauvegardés avec la scène dans le Renderer.
+		// ouverture, switch dans le ProjectPanel...). Pousse les RenderSettings
+		// sauvegardés avec la scène dans le Renderer.
+		// Note : la synchronisation caméra est gérée par ViewportPanel via
+		// syncCameraFromScene(state), qui met à jour le CameraController interne.
 		void syncToActiveScene()
 		{
 			auto scene = getActiveScene();
 			if (!scene) return;
-
-			if (Fufu::Entity cam = scene->getPrimaryCamera())
-			{
-				auto& t = cam.getComponent<Fufu::TransformComponent>();
-				cameraPosition = t.position;
-				cameraRotation = t.rotation;
-			}
 
 			Fufu::Application::get().getRenderer().getSettings() = scene->getRenderSettings();
 		}

@@ -2,6 +2,7 @@
 
 #include "EditorState.h"
 #include <Renderer/Renderer.h>
+#include <Application/CameraController.h>
 #include <glm/glm.hpp>
 
 namespace FufuStudio
@@ -20,11 +21,11 @@ namespace FufuStudio
 	public:
 		explicit OrientationGizmo(Fufu::Renderer& renderer) : m_Renderer(renderer) {}
 
-		void render(EditorState& state);
-		void handleShortcuts(EditorState& state);
+		void render(EditorState& state, Fufu::CameraController& cam);
+		void handleShortcuts(EditorState& state, Fufu::CameraController& cam);
 
 	private:
-		void snapTo(EditorState& state, const glm::vec3& axisDir);
+		void snapTo(EditorState& state, Fufu::CameraController& cam, const glm::vec3& axisDir);
 
 		Fufu::Renderer& m_Renderer;
 	};

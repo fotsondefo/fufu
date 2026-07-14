@@ -3,19 +3,21 @@
 #include <imgui.h>
 #include <array>
 #include <algorithm>
+#define GLM_ENABLE_EXPERIMENTAL
+#include <glm/gtx/quaternion.hpp>
 
 namespace FufuStudio
 {
-	void OrientationGizmo::render(EditorState& state)
+	void OrientationGizmo::render(EditorState& state, Fufu::CameraController& cam)
 	{
 		auto scene = state.getActiveScene();
 		if (!scene) return;
 
-		Fufu::Entity cam = scene->getPrimaryCamera();
-		if (!cam) return;
-
-		auto& camTransform = cam.getComponent<Fufu::TransformComponent>();
-		glm::mat4 view = glm::inverse(camTransform.getTransform());
+		// Reconstruction de la matrice de vue depuis pitch/yaw du CameraController
+		// (même convention que CameraController::onUpdate et TransformComponent).
+		glm::vec3 rot = cam.getRotation();
+		glm::quat camQuat = glm::quat(glm::vec3(rot.x, rot.y, 0.f));
+		glm::mat4 view = glm::mat4_cast(glm::inverse(camQuat));
 		glm::mat3 viewRot = glm::mat3(view);
 
 		const float radius = 32.f;
@@ -76,11 +78,11 @@ namespace FufuStudio
 			}
 
 			if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
-				snapTo(state, e.axisDir);
+				snapTo(state, cam, e.axisDir);
 		}
 	}
 
-	void OrientationGizmo::handleShortcuts(EditorState& state)
+	void OrientationGizmo::handleShortcuts(EditorState& state, Fufu::CameraController& cam)
 	{
 		if (!state.viewportFocused || !state.viewportHovered)
 			return;
@@ -89,12 +91,12 @@ namespace FufuStudio
 
 		// Convention (moteur Y-up) : Front = +Z, Right = +X, Top = +Y — Ctrl
 		// pour la vue opposée (Back/Left/Bottom), comme Blender.
-		if (ImGui::IsKeyPressed(ImGuiKey_Keypad1)) snapTo(state, ctrl ? glm::vec3(0.f, 0.f, -1.f) : glm::vec3(0.f, 0.f, 1.f));
-		if (ImGui::IsKeyPressed(ImGuiKey_Keypad3)) snapTo(state, ctrl ? glm::vec3(-1.f, 0.f, 0.f) : glm::vec3(1.f, 0.f, 0.f));
-		if (ImGui::IsKeyPressed(ImGuiKey_Keypad7)) snapTo(state, ctrl ? glm::vec3(0.f, -1.f, 0.f) : glm::vec3(0.f, 1.f, 0.f));
+		if (ImGui::IsKeyPressed(ImGuiKey_Keypad1)) snapTo(state, cam, ctrl ? glm::vec3(0.f, 0.f, -1.f) : glm::vec3(0.f, 0.f, 1.f));
+		if (ImGui::IsKeyPressed(ImGuiKey_Keypad3)) snapTo(state, cam, ctrl ? glm::vec3(-1.f, 0.f, 0.f) : glm::vec3(1.f, 0.f, 0.f));
+		if (ImGui::IsKeyPressed(ImGuiKey_Keypad7)) snapTo(state, cam, ctrl ? glm::vec3(0.f, -1.f, 0.f) : glm::vec3(0.f, 1.f, 0.f));
 	}
 
-	void OrientationGizmo::snapTo(EditorState& state, const glm::vec3& axisDir)
+	void OrientationGizmo::snapTo(EditorState& state, Fufu::CameraController& cam, const glm::vec3& axisDir)
 	{
 		// Orbite autour de l'entité sélectionnée, sinon l'origine.
 		glm::vec3 pivot(0.f);
@@ -102,20 +104,27 @@ namespace FufuStudio
 		if (primary && primary.isValid() && primary.hasComponent<Fufu::TransformComponent>())
 			pivot = primary.getComponent<Fufu::TransformComponent>().position;
 
-		float distance = glm::length(state.cameraPosition - pivot);
+		float distance = glm::length(cam.getPosition() - pivot);
 		if (distance < 0.5f) distance = 5.f;
 
 		glm::vec3 dir = glm::normalize(axisDir);
-		state.cameraPosition = pivot + dir * distance;
+		cam.setPosition(pivot + dir * distance);
 
-		// Même dérivation que le forward de la caméra (voir ViewportPanel) :
+		// Même dérivation que le forward de la caméra (voir CameraController) :
 		// pitch/yaw à partir du vecteur "regard" souhaité.
 		glm::vec3 forward = -dir;
 		float pitch = glm::clamp(glm::asin(glm::clamp(forward.y, -1.f, 1.f)), glm::radians(-89.f), glm::radians(89.f));
 		float yaw = glm::atan(-forward.x, -forward.z);
 
-		state.cameraRotation.x = pitch;
-		state.cameraRotation.y = yaw;
+		glm::vec3 rot = cam.getRotation();
+		rot.x = pitch;
+		rot.y = yaw;
+		cam.setRotation(rot);
+
+		// Pousser immédiatement vers la scène pour que le rendu soit cohérent
+		// dès la prochaine frame, sans attendre onUpdate().
+		auto scene = state.getActiveScene();
+		if (scene) cam.syncToScene(*scene);
 
 		m_Renderer.resetAccumulation();
 	}

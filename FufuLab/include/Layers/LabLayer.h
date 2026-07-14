@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Application/ILayer.h>
+#include <Application/CameraController.h>
 #include <Renderer/Renderer.h>
 #include <Project/Scene/Scene.h>
 #include <Application/Profiler.h>
@@ -55,6 +56,11 @@ namespace FufuLab
         std::string            m_ActiveDemoName;
 
         // Viewport
-        glm::vec2 m_ViewportSize = { 0.f, 0.f };
+        glm::vec2              m_ViewportSize = { 0.f, 0.f };
+        bool                   m_ViewportFocused = false;
+        bool                   m_ViewportHovered = false;
+
+        // Navigation caméra dans la scène active
+        Fufu::CameraController m_CameraController;
     };
 }

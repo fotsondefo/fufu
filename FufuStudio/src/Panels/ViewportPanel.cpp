@@ -30,99 +30,45 @@ namespace FufuStudio
 
 	void ViewportPanel::onUpdate(EditorState& state, float deltaTime)
 	{
-		if (state.viewportFocused)
-			handleCameraInput(state, deltaTime);
+		auto scene = state.getActiveScene();
 
-		syncCameraToScene(state);
-	}
-
-	void ViewportPanel::handleCameraInput(EditorState& state, float deltaTime)
-	{
-		GLFWwindow* window = static_cast<GLFWwindow*>(Fufu::Application::get().getWindow().getNativeWindow());
-
-		// --- Rotation souris (clic droit maintenu) ---
-		if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS)
+		// Resync caméra si la scène a changé depuis la dernière frame
+		if (scene.get() != m_LastScene)
 		{
-			double mx, my;
-			glfwGetCursorPos(window, &mx, &my);
-			glm::vec2 mousePos = { static_cast<float>(mx), static_cast<float>(my) };
+			m_LastScene = scene.get();
+			if (scene)
+				m_CameraController.syncFromScene(*scene);
+		}
 
-			if (m_FirstMouse)
+		if (state.viewportFocused && scene)
+		{
+			bool moved = m_CameraController.onUpdate(deltaTime, true);
+			if (moved)
 			{
-				m_LastMousePos = mousePos;
-				m_FirstMouse = false;
-				m_RightClickDragDistance = 0.f;
+				m_CameraController.syncToScene(*scene);
+				m_Renderer.resetAccumulation();
 			}
 
-			glm::vec2 delta = mousePos - m_LastMousePos;
-			m_LastMousePos = mousePos;
-			m_RightClickDragDistance += glm::length(delta);
-
-			// Signe cohérent avec le forward dérivé du quaternion (voir plus bas) :
-			// souris à droite/haut doit tourner la vue à droite/vers le haut.
-			state.cameraRotation.y -= delta.x * state.cameraLookSpeed * deltaTime; // yaw
-			state.cameraRotation.x -= delta.y * state.cameraLookSpeed * deltaTime; // pitch
-
-			// Clamp pitch pour éviter le gimbal lock
-			state.cameraRotation.x = std::clamp(
-				state.cameraRotation.x,
-				glm::radians(-89.f),
-				glm::radians(89.f)
-			);
-
-			m_Renderer.resetAccumulation();
-			m_RightMouseWasDown = true;
+			if (m_CameraController.consumeContextMenuRequest() && state.viewportHovered)
+				m_OpenContextMenu = true;
 		}
 		else
 		{
-			m_FirstMouse = true;
-
-			// Clic droit relâché sans drag significatif (rotation caméra) :
-			// menu contextuel plutôt qu'une simple rotation qui n'a pas eu lieu.
-			if (m_RightMouseWasDown && m_RightClickDragDistance < 4.f && state.viewportHovered)
-				m_OpenContextMenu = true;
-
-			m_RightMouseWasDown = false;
+			m_CameraController.onUpdate(deltaTime, false);
 		}
 
-		// --- Déplacement WASD ---
-		// Dérivé du même quaternion que TransformComponent::getTransform()
-		// (utilisé par le rendu et le gizmo), pour que le déplacement corresponde
-		// toujours à ce qui est effectivement affiché à l'écran.
-		float pitch = state.cameraRotation.x;
-		float yaw = state.cameraRotation.y;
-
-		glm::quat camRotation = glm::quat(glm::vec3(pitch, yaw, 0.f));
-		glm::vec3 forward = glm::normalize(camRotation * glm::vec3(0.f, 0.f, -1.f));
-		glm::vec3 right = glm::normalize(camRotation * glm::vec3(1.f, 0.f, 0.f));
-		glm::vec3 up = glm::vec3(0.f, 1.f, 0.f);
-
-		float speed = state.cameraMoveSpeed * deltaTime;
-
-		// Shift pour accélérer
-		if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS) speed *= 3.f;
-
-		bool moved = false;
-		if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) { state.cameraPosition += forward * speed; moved = true; }
-		if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) { state.cameraPosition -= forward * speed; moved = true; }
-		if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) { state.cameraPosition -= right * speed; moved = true; }
-		if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) { state.cameraPosition += right * speed; moved = true; }
-		if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS) { state.cameraPosition += up * speed; moved = true; }
-		if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS) { state.cameraPosition -= up * speed; moved = true; }
-
-		if (moved) m_Renderer.resetAccumulation();
+		// Toujours pousser vers la scène pour que les outils (gizmo, pick...)
+		// voient la position à jour même sans input ce frame.
+		if (scene)
+			m_CameraController.syncToScene(*scene);
 	}
 
-	void ViewportPanel::syncCameraToScene(EditorState& state)
+	void ViewportPanel::syncCameraFromScene(EditorState& state)
 	{
-		if (!state.getActiveScene()) return;
-
-		Fufu::Entity cam = state.getActiveScene()->getPrimaryCamera();
-		if (!cam) return;
-
-		auto& t = cam.getComponent<Fufu::TransformComponent>();
-		t.position = state.cameraPosition;
-		t.rotation = state.cameraRotation;
+		auto scene = state.getActiveScene();
+		if (!scene) return;
+		m_CameraController.syncFromScene(*scene);
+		m_LastScene = scene.get();
 	}
 
 	void ViewportPanel::onImGuiRender(EditorState& state)
@@ -256,8 +202,8 @@ namespace FufuStudio
 			ImGui::GetWindowDrawList()->AddText(overlayPos, IM_COL32(255, 255, 255, 220), fpsText);
 		}
 
-		m_OrientationGizmo.render(state);
-		m_OrientationGizmo.handleShortcuts(state);
+		m_OrientationGizmo.render(state, m_CameraController);
+		m_OrientationGizmo.handleShortcuts(state, m_CameraController);
 
 		drawContextMenu(state);
 
