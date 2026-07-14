@@ -13,12 +13,14 @@ namespace Fufu
 		std::string  title;
 		unsigned int width;
 		unsigned int height;
+		bool bEnableGLFWTitleBar;
 
 		explicit WindowProps(
 			const std::string& title = "Fufu Engine",
 			unsigned int width = 1280,
-			unsigned int  height = 720)
-			: title(title), width(width), height(height) {}
+			unsigned int  height = 720,
+			bool bEnableGLFWTitleBar = false)
+			: title(title), width(width), height(height), bEnableGLFWTitleBar(bEnableGLFWTitleBar) {}
 	};
 
 	class Window

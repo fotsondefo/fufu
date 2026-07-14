@@ -131,7 +131,9 @@ namespace Fufu
 
 	void GPUScene::upload(Scene& scene)
 	{
-		auto& am = Fufu::Application::get().getProjectManager().getCurrentProject().getAssetManager();
+		auto& pm = Fufu::Application::get().getProjectManager();
+		if (!pm.hasProject()) return;
+		auto& am = pm.getCurrentProject().getAssetManager();
 
 		// Caméra active : sert à choisir le LOD par distance (voir selectLOD).
 		glm::vec3 cameraPos(0.f);

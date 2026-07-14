@@ -14,6 +14,7 @@ set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 # Options de build
 option(FUFU_BUILD_STUDIO  "Build FufuStudio (Editor)"  ON)
 option(FUFU_BUILD_RUNTIME "Build FufuRuntime"          ON)
+option(FUFU_BUILD_LAB     "Build FufuLab (Research)"   ON)
 
 if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.30")
     cmake_policy(SET CMP0169 OLD)
@@ -101,4 +102,8 @@ endif()
 
 if(FUFU_BUILD_RUNTIME)
     add_subdirectory(FufuRuntime)
+endif()
+
+if(FUFU_BUILD_LAB)
+    add_subdirectory(FufuLab)
 endif()

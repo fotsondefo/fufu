@@ -124,8 +124,9 @@ namespace Fufu
 		gpuCam.aspectRatio = static_cast<float>(m_Width) / static_cast<float>(m_Height);
 		gpuCam.nearPlane = camComponent.nearPlane;
 
-		auto& am = Fufu::Application::get().getProjectManager().getCurrentProject().getAssetManager();
-		m_Skybox.update(scene.getEnvironment(), am);
+		auto& pm = Fufu::Application::get().getProjectManager();
+		if (pm.hasProject())
+			m_Skybox.update(scene.getEnvironment(), pm.getCurrentProject().getAssetManager());
 
 		// Frame data
 		GPUFrameData frameData;
