@@ -34,6 +34,10 @@ namespace Fufu
 
 		RenderSettings& getSettings() { return m_Settings; }
 
+		// Accès au GPUScene pour les outils de visualisation (FufuLab)
+		GPUScene&       getGPUScene()       { return m_GPUScene; }
+		const GPUScene& getGPUScene() const { return m_GPUScene; }
+
 		// Remet l'accumulation � z�ro (ex: cam�ra boug�e)
 		void resetAccumulation();
 

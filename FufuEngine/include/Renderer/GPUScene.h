@@ -60,6 +60,14 @@ namespace Fufu
 		// GPUMaterial::albedoTexIdx == i pour les matériaux qui l'utilisent).
 		const std::vector<uint32_t>& getMaterialTextures() const { return m_ActiveMaterialTextures; }
 
+		// Accès en lecture aux données CPU pour les outils de visualisation
+		// (FufuLab). Les vecteurs restent valides entre deux appels à upload().
+		const std::vector<GPUBVHNode>&           getBLASNodes()          const { return m_BLASNodes; }
+		const std::vector<GPUBVHNode>&           getTLASNodes()          const { return m_TLASNodes; }
+		const std::vector<GPUInstance>&          getInstances()          const { return m_Instances; }
+		const std::vector<GPUTrianglePosition>&  getTrianglePositions()  const { return m_TrianglePositions; }
+		const std::vector<GPUTriangleAttribute>& getTriangleAttributes() const { return m_TriangleAttributes; }
+
 	private:
 		// Résout (et met en cache, voir m_MaterialTextureCache) la texture GL
 		// référencée par un MaterialComponent::albedoTexID, et lui assigne un
