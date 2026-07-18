@@ -34,24 +34,25 @@ layout(binding = 17) uniform sampler2D u_GBuffer_Position;
 layout(binding = 18) uniform sampler2D u_GBuffer_Normal;
 layout(binding = 19) uniform sampler2D u_GBuffer_UV;
 
-uniform vec3  u_CamPos;
-uniform vec3  u_CamForward;
-uniform vec3  u_CamRight;
-uniform vec3  u_CamUp;
-uniform float u_CamFov;     // radians, champ complet
-uniform float u_CamAspect;
-uniform float u_Exposure;
-uniform int   u_LightCount;
-uniform int   u_HasSkybox;
-uniform float u_SkyboxIntensity;
+layout(std140, binding = 0) uniform FrameBlock {
+    mat4  viewProj;
+    vec3  camPos;      float _p0;
+    vec3  camForward;  float camFov;
+    vec3  camRight;    float camAspect;
+    vec3  camUp;       float exposure;
+    int   lightCount;
+    int   hasSkybox;
+    float skyboxIntensity;
+    float _p1;
+};
 
 const float PI = 3.14159265359;
 
 vec3 sampleSky(vec3 dir) {
-    if (u_HasSkybox == 1) {
+    if (hasSkybox == 1) {
         float u = atan(dir.z, dir.x) / (2.0 * PI) + 0.5;
         float v = acos(clamp(dir.y, -1.0, 1.0)) / PI;
-        return texture(u_Skybox, vec2(u, v)).rgb * u_SkyboxIntensity;
+        return texture(u_Skybox, vec2(u, v)).rgb * skyboxIntensity;
     }
     float t = 0.5 * (dir.y + 1.0);
     return mix(vec3(1.0), vec3(0.5, 0.7, 1.0), t);
@@ -102,11 +103,11 @@ void main() {
     // Pixel sans géométrie → ciel
     if (gPos.w < 0.5) {
         vec2  ndc   = v_UV * 2.0 - 1.0;
-        float scale = tan(u_CamFov * 0.5);
-        vec3  dir   = normalize(u_CamForward
-                              + ndc.x * u_CamAspect * scale * u_CamRight
-                              + ndc.y               * scale * u_CamUp);
-        vec3 sky = sampleSky(dir) * u_Exposure;
+        float scale = tan(camFov * 0.5);
+        vec3  dir   = normalize(camForward
+                              + ndc.x * camAspect * scale * camRight
+                              + ndc.y             * scale * camUp);
+        vec3 sky = sampleSky(dir) * exposure;
         sky = aces(sky);
         sky = pow(sky, vec3(1.0 / 2.2));
         fragColor = vec4(sky, 1.0);
@@ -127,10 +128,10 @@ void main() {
     if (mat.albedoTexIdx >= 0)
         albedo = texture(u_MaterialTextures[mat.albedoTexIdx], uv).rgb;
 
-    vec3 V     = normalize(u_CamPos - worldPos);
+    vec3 V     = normalize(camPos - worldPos);
     vec3 color = vec3(0.0);
 
-    for (int i = 0; i < u_LightCount; ++i) {
+    for (int i = 0; i < lightCount; ++i) {
         Light light = lights[i];
         vec3 L;
         vec3 radiance;
@@ -152,7 +153,7 @@ void main() {
     color += 0.03 * albedo;
     color += albedo * mat.emissive;
 
-    color = aces(color * u_Exposure);
+    color = aces(color * exposure);
     color = pow(color, vec3(1.0 / 2.2));
 
     fragColor = vec4(color, 1.0);

@@ -2,133 +2,142 @@
 #include "Renderer/Passes/GBufferPass.h"
 #include "Renderer/ShaderUtils.h"
 #include "Application/Profiler.h"
-#include <glm/gtc/type_ptr.hpp>
 
 namespace Fufu
 {
 
-	void GBufferPass::init(int width, int height)
-	{
-		uint32_t vs = compileShader(GL_VERTEX_SHADER,   loadShaderSource("GBuffer.vert"));
-		uint32_t fs = compileShader(GL_FRAGMENT_SHADER, loadShaderSource("GBuffer.frag"));
-		m_Program   = linkProgram({ vs, fs });
-		glDeleteShader(vs);
-		glDeleteShader(fs);
+static RHI::Ref<RHI::RHIPipeline> makeGraphicsPipeline(
+    RHI::RHIContext& ctx,
+    const std::string& vertFile,
+    const std::string& fragFile,
+    const RHI::GraphicsPipelineDesc& baseDesc)
+{
+    auto vs = ctx.createShader({ RHI::ShaderStage::Vertex,   loadShaderSource(vertFile) });
+    auto fs = ctx.createShader({ RHI::ShaderStage::Fragment, loadShaderSource(fragFile) });
+    RHI::GraphicsPipelineDesc desc = baseDesc;
+    desc.vertexShader   = vs;
+    desc.fragmentShader = fs;
+    return ctx.createGraphicsPipeline(desc);
+}
 
-		m_LocViewProj     = glGetUniformLocation(m_Program, "u_ViewProj");
-		m_LocTransform    = glGetUniformLocation(m_Program, "u_Transform");
-		m_LocInvTransform = glGetUniformLocation(m_Program, "u_InvTransform");
-		m_LocTriOffset    = glGetUniformLocation(m_Program, "u_TriOffset");
-		m_LocMatIdx       = glGetUniformLocation(m_Program, "u_MaterialIndex");
+static void ensureUBO(RHI::RHIContext& ctx, RHI::Ref<RHI::RHIBuffer>& buf,
+                      const void* data, size_t size)
+{
+    if (!buf || buf->getSize() < size)
+        buf = ctx.createBuffer({ size, RHI::BufferUsage::Uniform,
+                                  RHI::MemoryType::CPU_TO_GPU, data });
+    else
+        buf->upload(data, size);
+}
 
-		// VAO vide requis par le core profile même quand tous les données
-		// viennent des SSBOs via gl_VertexID.
-		glGenVertexArrays(1, &m_DummyVAO);
+// ── Init ─────────────────────────────────────────────────────────────────
 
-		createFBO(width, height);
-	}
+void GBufferPass::init(RHI::RHIContext& ctx, int width, int height)
+{
+    m_Ctx = &ctx;
 
-	void GBufferPass::shutdown()
-	{
-		glDeleteProgram(m_Program);
-		glDeleteVertexArrays(1, &m_DummyVAO);
-		deleteFBO();
-	}
+    RHI::GraphicsPipelineDesc desc{};
+    desc.depthStencil = { true, true, RHI::CompareOp::Less };
+    desc.rasterizer   = {};
 
-	void GBufferPass::resize(int width, int height)
-	{
-		deleteFBO();
-		createFBO(width, height);
-	}
+    m_Pipeline = makeGraphicsPipeline(ctx, "GBuffer.vert", "GBuffer.frag", desc);
 
-	void GBufferPass::createFBO(int w, int h)
-	{
-		auto makeRGBA32F = [&](uint32_t& id)
-		{
-			glGenTextures(1, &id);
-			glBindTexture(GL_TEXTURE_2D, id);
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, w, h, 0, GL_RGBA, GL_FLOAT, nullptr);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-		};
-		makeRGBA32F(m_PositionTex);
-		makeRGBA32F(m_NormalTex);
-		makeRGBA32F(m_UVTex);
+    createAttachments(ctx, width, height);
+}
 
-		glGenRenderbuffers(1, &m_DepthRBO);
-		glBindRenderbuffer(GL_RENDERBUFFER, m_DepthRBO);
-		glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, w, h);
+void GBufferPass::shutdown()
+{
+    m_Pipeline.reset();
+    m_PositionTex.reset();
+    m_NormalTex.reset();
+    m_UVTex.reset();
+    m_DepthTex.reset();
+    m_FrameUBO.reset();
+    m_DrawUBO.reset();
+}
 
-		glGenFramebuffers(1, &m_FBO);
-		glBindFramebuffer(GL_FRAMEBUFFER, m_FBO);
-		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_PositionTex, 0);
-		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, m_NormalTex,   0);
-		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, m_UVTex,       0);
-		glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, m_DepthRBO);
+void GBufferPass::resize(RHI::RHIContext& ctx, int width, int height)
+{
+    m_PositionTex.reset();
+    m_NormalTex.reset();
+    m_UVTex.reset();
+    m_DepthTex.reset();
+    createAttachments(ctx, width, height);
+}
 
-		const GLenum drawBufs[] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2 };
-		glDrawBuffers(3, drawBufs);
+void GBufferPass::createAttachments(RHI::RHIContext& ctx, int w, int h)
+{
+    RHI::TextureDesc rgba32f{};
+    rgba32f.format    = RHI::Format::RGBA32_FLOAT;
+    rgba32f.width     = static_cast<uint32_t>(w);
+    rgba32f.height    = static_cast<uint32_t>(h);
+    rgba32f.usage     = RHI::TextureUsage::ColorAttachment | RHI::TextureUsage::Sampled;
 
-		if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-			FUFU_ERROR("GBufferPass: framebuffer incomplet");
+    m_PositionTex = ctx.createTexture(rgba32f);
+    m_NormalTex   = ctx.createTexture(rgba32f);
+    m_UVTex       = ctx.createTexture(rgba32f);
 
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
-	}
+    RHI::TextureDesc depth{};
+    depth.format = RHI::Format::DEPTH24_STENCIL8;
+    depth.width  = static_cast<uint32_t>(w);
+    depth.height = static_cast<uint32_t>(h);
+    depth.usage  = RHI::TextureUsage::DepthAttachment;
 
-	void GBufferPass::deleteFBO()
-	{
-		glDeleteTextures(1, &m_PositionTex);
-		glDeleteTextures(1, &m_NormalTex);
-		glDeleteTextures(1, &m_UVTex);
-		glDeleteRenderbuffers(1, &m_DepthRBO);
-		glDeleteFramebuffers(1, &m_FBO);
-		m_PositionTex = m_NormalTex = m_UVTex = m_DepthRBO = m_FBO = 0;
-	}
+    m_DepthTex = ctx.createTexture(depth);
+}
 
-	void GBufferPass::render(const GPUScene& gpu, const glm::mat4& viewProj, int width, int height)
-	{
-		const auto& instances  = gpu.getInstances();
-		const auto& triCounts  = gpu.getInstanceTriCounts();
-		if (instances.empty()) return;
+// ── Render ────────────────────────────────────────────────────────────────
 
-		gpu.bind(); // binding 2=positions, 10=attributs, ...
+void GBufferPass::render(RHI::RHICommandList& cmd,
+                          const GPUScene& gpu,
+                          const GPUFrameUBO& frame,
+                          int width, int height)
+{
+    const auto& instances = gpu.getInstances();
+    const auto& triCounts = gpu.getInstanceTriCounts();
+    if (instances.empty()) return;
 
-		glBindFramebuffer(GL_FRAMEBUFFER, m_FBO);
-		glViewport(0, 0, width, height);
+    RHI::RenderPassDesc pass{};
+    // position : w=0 → ciel (clear value 0)
+    pass.colorAttachments.push_back({ m_PositionTex, RHI::LoadOp::Clear, RHI::StoreOp::Store, { 0.f, 0.f, 0.f, 0.f } });
+    pass.colorAttachments.push_back({ m_NormalTex,   RHI::LoadOp::Clear, RHI::StoreOp::Store, { 0.f, 0.f, 0.f, 0.f } });
+    pass.colorAttachments.push_back({ m_UVTex,       RHI::LoadOp::Clear, RHI::StoreOp::Store, { 0.f, 0.f, 0.f, 0.f } });
+    pass.depthAttachment = RHI::DepthAttachment{ m_DepthTex, RHI::LoadOp::Clear, RHI::StoreOp::DontCare, 1.0f };
+    pass.width  = static_cast<uint32_t>(width);
+    pass.height = static_cast<uint32_t>(height);
 
-		// Effacer position (w=0 → ciel), normale, UV, depth
-		const float clearPos[] = { 0.f, 0.f, 0.f, 0.f };
-		const float clearNrm[] = { 0.f, 0.f, 0.f, 0.f };
-		const float clearUV[]  = { 0.f, 0.f, 0.f, 0.f };
-		glClearBufferfv(GL_COLOR, 0, clearPos);
-		glClearBufferfv(GL_COLOR, 1, clearNrm);
-		glClearBufferfv(GL_COLOR, 2, clearUV);
-		glClear(GL_DEPTH_BUFFER_BIT);
+    cmd.beginLabel("GBufferPass");
+    cmd.beginRenderPass(pass);
+    cmd.bindPipeline(m_Pipeline.get());
 
-		glEnable(GL_DEPTH_TEST);
-		glDepthFunc(GL_LESS);
-		glUseProgram(m_Program);
-		glBindVertexArray(m_DummyVAO);
-		glUniformMatrix4fv(m_LocViewProj, 1, GL_FALSE, glm::value_ptr(viewProj));
+    gpu.bind(cmd);
 
-		Profiler::get().beginGPU("GBufferPass");
-		for (std::size_t i = 0; i < instances.size(); ++i)
-		{
-			const GPUInstance& inst = instances[i];
-			int triCount = triCounts[i];
-			if (triCount <= 0) continue;
+    // Upload + bind FrameUBO (binding = 0)
+    ensureUBO(*m_Ctx, m_FrameUBO, &frame, sizeof(frame));
+    cmd.bindUniformBuffer(0, m_FrameUBO.get());
 
-			glUniformMatrix4fv(m_LocTransform,    1, GL_FALSE, glm::value_ptr(inst.transform));
-			glUniformMatrix4fv(m_LocInvTransform, 1, GL_FALSE, glm::value_ptr(inst.invTransform));
-			glUniform1i(m_LocTriOffset, inst.blasTriOffset);
-			glUniform1i(m_LocMatIdx,    inst.materialIndex);
-			glDrawArrays(GL_TRIANGLES, 0, triCount * 3);
-		}
-		Profiler::get().endGPU("GBufferPass");
+    Profiler::get().beginGPU("GBufferPass");
+    for (std::size_t i = 0; i < instances.size(); ++i)
+    {
+        const GPUInstance& inst = instances[i];
+        int triCount = triCounts[i];
+        if (triCount <= 0) continue;
 
-		glBindVertexArray(0);
-		glDisable(GL_DEPTH_TEST);
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
-	}
+        // Upload + bind DrawUBO (binding = 1)
+        GPUDrawUBO draw;
+        draw.transform     = inst.transform;
+        draw.invTransform  = inst.invTransform;
+        draw.triOffset     = inst.blasTriOffset;
+        draw.materialIndex = inst.materialIndex;
+        ensureUBO(*m_Ctx, m_DrawUBO, &draw, sizeof(draw));
+        cmd.bindUniformBuffer(1, m_DrawUBO.get());
+
+        cmd.draw(static_cast<uint32_t>(triCount * 3));
+    }
+    Profiler::get().endGPU("GBufferPass");
+
+    cmd.endRenderPass();
+    cmd.endLabel();
+}
 
 }

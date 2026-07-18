@@ -37,7 +37,8 @@ public:
     explicit GLTexture(const TextureDesc& desc);
     ~GLTexture() override;
 
-    void upload(const void* data, uint32_t mip = 0, uint32_t layer = 0) override;
+    void     upload(const void* data, uint32_t mip = 0, uint32_t layer = 0) override;
+    uint64_t getNativeHandle() const override { return static_cast<uint64_t>(m_Handle); }
 
     GLuint getHandle()        const { return m_Handle; }
     GLenum getGLTarget()      const { return m_Target; }

@@ -10,6 +10,7 @@
 #include "Passes/ForwardPass.h"
 #include "Passes/DeferredPass.h"
 #include "Project/Scene/Scene.h"
+#include "RHI/RHIContext.h"
 #include <filesystem>
 
 namespace Fufu
@@ -52,20 +53,8 @@ namespace Fufu
 		// une lecture GPU->CPU et une conversion float[0,1] -> uint8.
 		bool exportImage(const std::filesystem::path& path) const;
 
-		// Texture à afficher : FXAA en priorité si actif, sinon la texture
-		// propre à la technique courante (Forward/Deferred ont leurs propres
-		// textures de sortie).
-		uint32_t getOutputTextureID() const
-		{
-			if (m_Settings.aaMode == AAMode::FXAA)
-				return m_FXAAPass.getOutputTexture();
-			switch (m_Settings.technique)
-			{
-			case RenderTechnique::Forward:  return m_ForwardPass.getOutputTexture();
-			case RenderTechnique::Deferred: return m_DeferredPass.getOutputTexture();
-			default:                        return m_OutputTexture;
-			}
-		}
+		// Texture à afficher : GL handle (uint32_t) extrait du RHITexture.
+		uint32_t getOutputTextureID() const;
 
 	private:
 		// Init OpenGL
@@ -79,6 +68,8 @@ namespace Fufu
 		void clearOutput();
 
 	private:
+		RHI::Ref<RHI::RHIContext> m_RHIContext;
+
 		RenderSettings m_Settings;
 
 		int m_Width = 0;

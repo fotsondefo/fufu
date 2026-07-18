@@ -25,6 +25,10 @@ public:
     // Upload depuis la mémoire CPU. VK : staging buffer + pipeline barrier interne.
     virtual void upload(const void* data, uint32_t mip = 0, uint32_t layer = 0) = 0;
 
+    // Identifiant natif du backend : GLuint en GL, VkImage en VK.
+    // Permet à du code GL-specifique de récupérer le handle sans inclure GLResources.h.
+    virtual uint64_t getNativeHandle() const = 0;
+
     const TextureDesc& getDesc() const { return m_Desc; }
 
 protected:

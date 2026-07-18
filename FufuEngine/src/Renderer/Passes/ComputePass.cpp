@@ -57,7 +57,7 @@ namespace Fufu
 			glBindTexture(GL_TEXTURE_2D, materialTextures[i]);
 		}
 
-		scene.bind();
+		scene.bindGL();
 
 		glBindBufferBase(GL_UNIFORM_BUFFER, 4, m_CameraUBO);
 		glBindBufferBase(GL_UNIFORM_BUFFER, 5, m_FrameDataUBO);

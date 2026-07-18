@@ -1,9 +1,11 @@
 #include "depch.h"
 #include "Project/Scene/Scene.h"
 #include "Renderer/Renderer.h"
+#include "Renderer/RasterUniforms.h"
 #include "Project/Components.h"
 #include "Application/Application.h"
 #include "Application/Profiler.h"
+#include "RHI/RHITexture.h"
 #include <algorithm>
 #include <glm/gtc/matrix_transform.hpp>
 #define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -12,24 +14,31 @@
 namespace Fufu
 {
 
-	// ----------------------------------------------------------------
-	// Init / Shutdown
-	// ----------------------------------------------------------------
+	// ── Init / Shutdown ───────────────────────────────────────────────────────
 
 	void Renderer::init(int width, int height)
 	{
-		m_Width = width;
+		m_Width  = width;
 		m_Height = height;
+
+		// Contexte RHI — GL 4.3, debug callback activé en debug
+		m_RHIContext = RHI::RHIContext::create({ RHI::Backend::OpenGL, nullptr,
+#ifdef NDEBUG
+			false
+#else
+			true
+#endif
+		});
 
 		createTextures();
 		createQuad();
 
-		m_GPUScene.init();
+		m_GPUScene.init(*m_RHIContext);
 		m_ComputePass.init();
 		m_FXAAPass.init(width, height);
-		m_GBufferPass.init(width, height);
-		m_ForwardPass.init(width, height);
-		m_DeferredPass.init(width, height);
+		m_GBufferPass.init(*m_RHIContext, width, height);
+		m_ForwardPass.init(*m_RHIContext, width, height);
+		m_DeferredPass.init(*m_RHIContext, width, height);
 
 		FUFU_INFO("Renderer initialized ({}x{})", width, height);
 	}
@@ -48,6 +57,8 @@ namespace Fufu
 		m_GBufferPass.shutdown();
 		m_ForwardPass.shutdown();
 		m_DeferredPass.shutdown();
+
+		m_RHIContext.reset();
 	}
 
 	void Renderer::createTextures()
@@ -61,7 +72,6 @@ namespace Fufu
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 		};
-
 		makeTexture(m_OutputTexture);
 		makeTexture(m_AccumTexture);
 	}
@@ -69,7 +79,6 @@ namespace Fufu
 	void Renderer::createQuad()
 	{
 		float quad[] = {
-			// pos       uv
 			-1.f, -1.f,  0.f, 0.f,
 			 1.f, -1.f,  1.f, 0.f,
 			 1.f,  1.f,  1.f, 1.f,
@@ -77,7 +86,6 @@ namespace Fufu
 			 1.f,  1.f,  1.f, 1.f,
 			-1.f,  1.f,  0.f, 1.f,
 		};
-
 		glGenVertexArrays(1, &m_QuadVAO);
 		glGenBuffers(1, &m_QuadVBO);
 		glBindVertexArray(m_QuadVAO);
@@ -90,13 +98,10 @@ namespace Fufu
 		glBindVertexArray(0);
 	}
 
-	// ----------------------------------------------------------------
-	// Render
-	// ----------------------------------------------------------------
+	// ── Render ────────────────────────────────────────────────────────────────
 
 	void Renderer::renderScene(Scene& scene)
 	{
-		// Upload sc�ne si chang�e
 		if (sceneNeedsUpdate(scene))
 		{
 			m_GPUScene.upload(scene);
@@ -104,12 +109,9 @@ namespace Fufu
 				resetAccumulation();
 		}
 
-		// Cam�ra
 		Entity cam = scene.getPrimaryCamera();
 		if (!cam)
 		{
-			// Sans cam�ra, rien � rendre : effacer la sortie plut�t que de
-			// laisser l'image de la sc�ne pr�c�dente affich�e � l'�cran.
 			clearOutput();
 			return;
 		}
@@ -117,104 +119,110 @@ namespace Fufu
 		auto& camTransform = cam.getComponent<TransformComponent>();
 		auto& camComponent = cam.getComponent<CameraComponent>();
 
-		glm::mat4 view = glm::inverse(camTransform.getTransform());
+		glm::mat4 view    = glm::inverse(camTransform.getTransform());
 		glm::vec3 forward = glm::normalize(-glm::vec3(view[0][2], view[1][2], view[2][2]));
-		glm::vec3 right = glm::normalize(glm::vec3(view[0][0], view[1][0], view[2][0]));
-		glm::vec3 up = glm::normalize(glm::vec3(view[0][1], view[1][1], view[2][1]));
+		glm::vec3 right   = glm::normalize( glm::vec3(view[0][0], view[1][0], view[2][0]));
+		glm::vec3 up      = glm::normalize( glm::vec3(view[0][1], view[1][1], view[2][1]));
 
 		GPUCamera gpuCam;
-		gpuCam.position = glm::vec4(camTransform.position.x, camTransform.position.y, camTransform.position.z, 1.f);
-		gpuCam.forward = glm::vec4(forward, 0.f);
-		gpuCam.right = glm::vec4(right, 0.f);
-		gpuCam.up = glm::vec4(up, 0.f);
-		gpuCam.fov = camComponent.fov;
+		gpuCam.position    = glm::vec4(camTransform.position, 1.f);
+		gpuCam.forward     = glm::vec4(forward, 0.f);
+		gpuCam.right       = glm::vec4(right,   0.f);
+		gpuCam.up          = glm::vec4(up,       0.f);
+		gpuCam.fov         = camComponent.fov;
 		gpuCam.aspectRatio = static_cast<float>(m_Width) / static_cast<float>(m_Height);
-		gpuCam.nearPlane = camComponent.nearPlane;
+		gpuCam.nearPlane   = camComponent.nearPlane;
 
 		auto& pm = Fufu::Application::get().getProjectManager();
 		if (pm.hasProject())
 			m_Skybox.update(scene.getEnvironment(), pm.getCurrentProject().getAssetManager());
 
-		// Frame data
 		GPUFrameData frameData;
-		frameData.frameIndex = (m_Settings.mode == RenderMode::Accumulation)
-			? m_FrameIndex : 0;
-		frameData.maxBounces = m_Settings.maxBounces;
-		frameData.samplesPerPixel = m_Settings.samplesPerPixel;
-		frameData.exposure = m_Settings.exposure;
-		frameData.width = m_Width;
-		frameData.height = m_Height;
-		frameData.triangleCount = m_GPUScene.getInstanceCount();
-		frameData.materialCount = m_GPUScene.getMaterialCount();
-		frameData.lightCount = m_GPUScene.getLightCount();
-		frameData.technique = static_cast<int>(m_Settings.technique);
-		frameData.aaMode = static_cast<int>(m_Settings.aaMode);
-		frameData.taaFrameIndex = m_TAAFrameIndex;
-		frameData.taaBlendFactor = m_Settings.taaBlendFactor;
-		frameData.hasSkybox = m_Skybox.isActive() ? 1 : 0;
-		frameData.skyboxIntensity = scene.getEnvironment().skyboxIntensity;
+		frameData.frameIndex       = (m_Settings.mode == RenderMode::Accumulation) ? m_FrameIndex : 0;
+		frameData.maxBounces       = m_Settings.maxBounces;
+		frameData.samplesPerPixel  = m_Settings.samplesPerPixel;
+		frameData.exposure         = m_Settings.exposure;
+		frameData.width            = m_Width;
+		frameData.height           = m_Height;
+		frameData.triangleCount    = m_GPUScene.getInstanceCount();
+		frameData.materialCount    = m_GPUScene.getMaterialCount();
+		frameData.lightCount       = m_GPUScene.getLightCount();
+		frameData.technique        = static_cast<int>(m_Settings.technique);
+		frameData.aaMode           = static_cast<int>(m_Settings.aaMode);
+		frameData.taaFrameIndex    = m_TAAFrameIndex;
+		frameData.taaBlendFactor   = m_Settings.taaBlendFactor;
+		frameData.hasSkybox        = m_Skybox.isActive() ? 1 : 0;
+		frameData.skyboxIntensity  = scene.getEnvironment().skyboxIntensity;
 
-		int drawCalls = 0;
-		const float aspect = static_cast<float>(m_Width) / static_cast<float>(m_Height);
-		const bool  useFXAA = (m_Settings.aaMode == AAMode::FXAA);
-		const bool  hasSkybox = m_Skybox.isActive();
+		const float aspect          = static_cast<float>(m_Width) / static_cast<float>(m_Height);
+		const bool  useFXAA         = (m_Settings.aaMode == AAMode::FXAA);
+		const bool  hasSkybox       = m_Skybox.isActive();
 		const float skyboxIntensity = scene.getEnvironment().skyboxIntensity;
+		int drawCalls = 0;
 
-		if (m_Settings.technique == RenderTechnique::Forward)
+		if (m_Settings.technique == RenderTechnique::Forward ||
+		    m_Settings.technique == RenderTechnique::Deferred)
 		{
-			// Projection perspective (fov = champ vertical total, en radians comme le compute)
+			RHI::RHICommandList* cmd = m_RHIContext->beginFrame();
+
 			glm::mat4 proj = glm::perspective(gpuCam.fov, aspect, gpuCam.nearPlane, 10000.f);
 			glm::mat4 vp   = proj * glm::inverse(camTransform.getTransform());
 
-			m_ForwardPass.render(m_GPUScene, vp,
-				glm::vec3(gpuCam.position),
-				glm::vec3(gpuCam.forward), glm::vec3(gpuCam.right), glm::vec3(gpuCam.up),
-				gpuCam.fov, aspect,
-				m_QuadVAO,
-				m_Skybox.getTextureID(), hasSkybox, skyboxIntensity,
-				m_Settings.exposure,
-				m_Width, m_Height);
+			GPUFrameUBO frame{};
+			frame.viewProj        = vp;
+			frame.camPos          = glm::vec3(gpuCam.position);
+			frame.camForward      = glm::vec3(gpuCam.forward);
+			frame.camFov          = gpuCam.fov;
+			frame.camRight        = glm::vec3(gpuCam.right);
+			frame.camAspect       = aspect;
+			frame.camUp           = glm::vec3(gpuCam.up);
+			frame.exposure        = m_Settings.exposure;
+			frame.lightCount      = m_GPUScene.getLightCount();
+			frame.hasSkybox       = hasSkybox ? 1 : 0;
+			frame.skyboxIntensity = skyboxIntensity;
 
-			drawCalls = static_cast<int>(m_GPUScene.getInstanceCount()) + 1; // +1 ciel
-
-			if (useFXAA)
+			if (m_Settings.technique == RenderTechnique::Forward)
 			{
-				m_FXAAPass.execute(m_ForwardPass.getOutputTexture(), m_QuadVAO, m_Width, m_Height);
-				++drawCalls;
+				m_ForwardPass.render(*cmd, m_GPUScene, frame,
+					m_QuadVAO, m_Skybox.getTextureID(), m_Width, m_Height);
+
+				drawCalls = static_cast<int>(m_GPUScene.getInstanceCount()) + 1;
+
+				if (useFXAA)
+				{
+					m_FXAAPass.execute(
+						static_cast<uint32_t>(m_ForwardPass.getOutputTexture()->getNativeHandle()),
+						m_QuadVAO, m_Width, m_Height);
+					++drawCalls;
+				}
 			}
-		}
-		else if (m_Settings.technique == RenderTechnique::Deferred)
-		{
-			glm::mat4 proj = glm::perspective(gpuCam.fov, aspect, gpuCam.nearPlane, 10000.f);
-			glm::mat4 vp   = proj * glm::inverse(camTransform.getTransform());
-
-			// Étape 1 : G-Buffer
-			m_GBufferPass.render(m_GPUScene, vp, m_Width, m_Height);
-			drawCalls = static_cast<int>(m_GPUScene.getInstanceCount());
-
-			// Étape 2 : éclairage différé fullscreen
-			m_DeferredPass.render(m_GPUScene,
-				m_GBufferPass.getPositionTexture(),
-				m_GBufferPass.getNormalTexture(),
-				m_GBufferPass.getUVTexture(),
-				m_QuadVAO,
-				m_Skybox.getTextureID(), hasSkybox, skyboxIntensity,
-				glm::vec3(gpuCam.position),
-				glm::vec3(gpuCam.forward), glm::vec3(gpuCam.right), glm::vec3(gpuCam.up),
-				gpuCam.fov, aspect,
-				m_Settings.exposure,
-				m_Width, m_Height);
-			++drawCalls;
-
-			if (useFXAA)
+			else // Deferred
 			{
-				m_FXAAPass.execute(m_DeferredPass.getOutputTexture(), m_QuadVAO, m_Width, m_Height);
+				m_GBufferPass.render(*cmd, m_GPUScene, frame, m_Width, m_Height);
+				drawCalls = static_cast<int>(m_GPUScene.getInstanceCount());
+
+				m_DeferredPass.render(*cmd, m_GPUScene,
+					m_GBufferPass.getPositionTexture(),
+					m_GBufferPass.getNormalTexture(),
+					m_GBufferPass.getUVTexture(),
+					frame,
+					m_QuadVAO, m_Skybox.getTextureID(), m_Width, m_Height);
 				++drawCalls;
+
+				if (useFXAA)
+				{
+					m_FXAAPass.execute(
+						static_cast<uint32_t>(m_DeferredPass.getOutputTexture()->getNativeHandle()),
+						m_QuadVAO, m_Width, m_Height);
+					++drawCalls;
+				}
 			}
+
+			m_RHIContext->endFrame();
 		}
 		else
 		{
-			// PathTracing ou RayTracing : compute shader existant
+			// PathTracing / RayTracing : compute shader, pas encore migré vers le RHI
 			m_ComputePass.execute(m_GPUScene, gpuCam, frameData, m_OutputTexture, m_AccumTexture,
 				m_Skybox.getTextureID(), m_Width, m_Height);
 			drawCalls = 1;
@@ -225,7 +233,6 @@ namespace Fufu
 				++drawCalls;
 			}
 
-			// Accumulation uniquement pour les techniques compute
 			if (m_Settings.mode == RenderMode::Accumulation &&
 				m_FrameIndex < m_Settings.maxAccumFrames)
 				++m_FrameIndex;
@@ -236,28 +243,47 @@ namespace Fufu
 		Profiler::get().setCounters(m_GPUScene.getTriangleCount(), m_GPUScene.getInstanceCount(), drawCalls);
 	}
 
-	// ----------------------------------------------------------------
-	// Resize / Reset
-	// ----------------------------------------------------------------
+	uint32_t Renderer::getOutputTextureID() const
+	{
+		if (m_Settings.aaMode == AAMode::FXAA)
+			return m_FXAAPass.getOutputTexture();
+		switch (m_Settings.technique)
+		{
+		case RenderTechnique::Forward:
+			if (auto* tex = m_ForwardPass.getOutputTexture())
+				return static_cast<uint32_t>(tex->getNativeHandle());
+			break;
+		case RenderTechnique::Deferred:
+			if (auto* tex = m_DeferredPass.getOutputTexture())
+				return static_cast<uint32_t>(tex->getNativeHandle());
+			break;
+		default:
+			break;
+		}
+		return m_OutputTexture;
+	}
+
+	// ── Resize / Reset ────────────────────────────────────────────────────────
 
 	void Renderer::resize(int width, int height)
 	{
-		m_Width = width;
+		m_Width  = width;
 		m_Height = height;
 
 		glDeleteTextures(1, &m_OutputTexture);
 		glDeleteTextures(1, &m_AccumTexture);
 		createTextures();
+
 		m_FXAAPass.resize(width, height);
-		m_GBufferPass.resize(width, height);
-		m_ForwardPass.resize(width, height);
-		m_DeferredPass.resize(width, height);
+		m_GBufferPass.resize(*m_RHIContext, width, height);
+		m_ForwardPass.resize(*m_RHIContext, width, height);
+		m_DeferredPass.resize(*m_RHIContext, width, height);
 		resetAccumulation();
 	}
 
 	void Renderer::resetAccumulation()
 	{
-		m_FrameIndex = 0;
+		m_FrameIndex    = 0;
 		m_TAAFrameIndex = 0;
 	}
 
@@ -279,15 +305,19 @@ namespace Fufu
 			}
 		}
 
-		// Toutes les textures potentiellement affichées doivent être effacées.
-		auto clearTex = [&](uint32_t id) {
+		auto clearGLTex = [&](uint32_t id) {
+			if (!id) return;
 			glBindTexture(GL_TEXTURE_2D, id);
 			glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, m_Width, m_Height, GL_RGBA, GL_FLOAT, s_ClearBuffer.data());
 		};
-		clearTex(m_OutputTexture);
-		clearTex(m_FXAAPass.getOutputTexture());
-		clearTex(m_ForwardPass.getOutputTexture());
-		clearTex(m_DeferredPass.getOutputTexture());
+		auto clearRHITex = [&](RHI::RHITexture* tex) {
+			if (tex) clearGLTex(static_cast<uint32_t>(tex->getNativeHandle()));
+		};
+
+		clearGLTex(m_OutputTexture);
+		clearGLTex(m_FXAAPass.getOutputTexture());
+		clearRHITex(m_ForwardPass.getOutputTexture());
+		clearRHITex(m_DeferredPass.getOutputTexture());
 	}
 
 	bool Renderer::exportImage(const std::filesystem::path& path) const
@@ -295,7 +325,6 @@ namespace Fufu
 		if (m_Width <= 0 || m_Height <= 0) return false;
 
 		std::vector<float> pixels(static_cast<std::size_t>(m_Width) * static_cast<std::size_t>(m_Height) * 4);
-
 		glBindTexture(GL_TEXTURE_2D, getOutputTextureID());
 		glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_FLOAT, pixels.data());
 
@@ -303,29 +332,18 @@ namespace Fufu
 		for (std::size_t i = 0; i < pixels.size(); ++i)
 			bytes[i] = static_cast<unsigned char>(std::clamp(pixels[i], 0.f, 1.f) * 255.f + 0.5f);
 
-		// La texture suit la convention OpenGL (ligne 0 = bas de l'image, voir
-		// le calcul de `uv` dans le compute shader) alors qu'un PNG attend sa
-		// ligne 0 en haut : flip vertical à l'écriture pour matcher ce que
-		// l'utilisateur voit réellement dans le viewport.
 		stbi_flip_vertically_on_write(1);
 		bool ok = stbi_write_png(path.string().c_str(), m_Width, m_Height, 4, bytes.data(), m_Width * 4) != 0;
-
 		if (!ok)
 			FUFU_ERROR("Renderer: failed to export image to '{}'", path.string());
-
 		return ok;
 	}
 
 	bool Renderer::sceneNeedsUpdate(Scene& scene)
 	{
-		// Reconstruire toute la géométrie GPU (BVH inclus) à chaque frame était
-		// le vrai goulot d'étranglement sur les meshes un peu lourds (~50k
-		// triangles) : ce n'est plus nécessaire que quand la scène a réellement
-		// changé (Scene::markDirty, voir Scene.h/EntityImpl.h) ou qu'on vient
-		// de basculer sur une autre scène active.
 		if (&scene != m_LastScene || scene.getVersion() != m_LastSceneVersion)
 		{
-			m_LastScene = &scene;
+			m_LastScene        = &scene;
 			m_LastSceneVersion = scene.getVersion();
 			return true;
 		}

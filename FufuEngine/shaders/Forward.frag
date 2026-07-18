@@ -33,9 +33,17 @@ layout(std430, binding = 9) readonly buffer LightBuffer    { Light lights[]; };
 
 layout(binding = 1) uniform sampler2D u_MaterialTextures[16];
 
-uniform vec3  u_CamPos;
-uniform float u_Exposure;
-uniform int   u_LightCount;
+layout(std140, binding = 0) uniform FrameBlock {
+    mat4  viewProj;
+    vec3  camPos;      float _p0;
+    vec3  camForward;  float camFov;
+    vec3  camRight;    float camAspect;
+    vec3  camUp;       float exposure;
+    int   lightCount;
+    int   hasSkybox;
+    float skyboxIntensity;
+    float _p1;
+};
 
 const float PI = 3.14159265359;
 
@@ -86,10 +94,10 @@ void main() {
         albedo = texture(u_MaterialTextures[mat.albedoTexIdx], v_UV).rgb;
 
     vec3 N = normalize(v_WorldNormal);
-    vec3 V = normalize(u_CamPos - v_WorldPos);
+    vec3 V = normalize(camPos - v_WorldPos);
 
     vec3 color = vec3(0.0);
-    for (int i = 0; i < u_LightCount; ++i) {
+    for (int i = 0; i < lightCount; ++i) {
         Light light = lights[i];
         vec3 L;
         vec3 radiance;
@@ -111,7 +119,7 @@ void main() {
     color += 0.03 * albedo;               // ambiant plat
     color += albedo * mat.emissive;       // émissif
 
-    color = aces(color * u_Exposure);
+    color = aces(color * exposure);
     color = pow(color, vec3(1.0 / 2.2));
 
     fragColor = vec4(color, 1.0);

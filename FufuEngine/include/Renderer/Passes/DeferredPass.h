@@ -1,57 +1,44 @@
 #pragma once
 
 #include "Renderer/GPUScene.h"
-#include <cstdint>
+#include "Renderer/RasterUniforms.h"
+#include "RHI/RHIContext.h"
+#include "RHI/RHICommandList.h"
+#include "RHI/RHIPipeline.h"
+#include "RHI/RHITexture.h"
+#include "RHI/RHIBuffer.h"
 #include <glm/glm.hpp>
 
 namespace Fufu
 {
-	// Passe d'éclairage différé : lit le G-Buffer (position/normale/UV)
-	// et applique PBR Cook-Torrance en fullscreen. Utilise FullscreenQuad.vert
-	// + DeferredLighting.frag. Les pixels sans géométrie reçoivent le ciel.
 	class DeferredPass
 	{
 	public:
-		void init(int width, int height);
+		void init   (RHI::RHIContext& ctx, int width, int height);
 		void shutdown();
-		void resize(int width, int height);
+		void resize (RHI::RHIContext& ctx, int width, int height);
 
-		void render(const GPUScene& gpu,
-		            uint32_t gPosition,
-		            uint32_t gNormal,
-		            uint32_t gUV,
+		void render(RHI::RHICommandList& cmd,
+		            const GPUScene& gpu,
+		            RHI::RHITexture* gPosition,
+		            RHI::RHITexture* gNormal,
+		            RHI::RHITexture* gUV,
+		            const GPUFrameUBO& frame,
 		            uint32_t quadVAO,
 		            uint32_t skyboxTex,
-		            bool hasSkybox,
-		            float skyboxIntensity,
-		            const glm::vec3& camPos,
-		            const glm::vec3& camForward,
-		            const glm::vec3& camRight,
-		            const glm::vec3& camUp,
-		            float camFov,
-		            float camAspect,
-		            float exposure,
 		            int width, int height);
 
-		uint32_t getOutputTexture() const { return m_OutputTex; }
+		RHI::RHITexture* getOutputTexture() const { return m_OutputTex.get(); }
 
 	private:
-		void createFBO(int w, int h);
-		void deleteFBO();
+		void createAttachments(RHI::RHIContext& ctx, int w, int h);
 
-		uint32_t m_Program   = 0;
-		uint32_t m_FBO       = 0;
-		uint32_t m_OutputTex = 0;
+		RHI::RHIContext*           m_Ctx = nullptr;
 
-		int m_LocCamPos          = -1;
-		int m_LocCamForward      = -1;
-		int m_LocCamRight        = -1;
-		int m_LocCamUp           = -1;
-		int m_LocCamFov          = -1;
-		int m_LocCamAspect       = -1;
-		int m_LocExposure        = -1;
-		int m_LocLightCount      = -1;
-		int m_LocHasSkybox       = -1;
-		int m_LocSkyboxIntensity = -1;
+		RHI::Ref<RHI::RHIPipeline> m_Pipeline;
+
+		RHI::Ref<RHI::RHITexture>  m_OutputTex;
+
+		RHI::Ref<RHI::RHIBuffer>   m_FrameUBO;
 	};
 }
