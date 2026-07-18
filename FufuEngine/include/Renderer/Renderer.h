@@ -6,6 +6,9 @@
 #include "Skybox.h"
 #include "Passes/ComputePass.h"
 #include "Passes/FXAAPass.h"
+#include "Passes/GBufferPass.h"
+#include "Passes/ForwardPass.h"
+#include "Passes/DeferredPass.h"
 #include "Project/Scene/Scene.h"
 #include <filesystem>
 
@@ -49,11 +52,19 @@ namespace Fufu
 		// une lecture GPU->CPU et une conversion float[0,1] -> uint8.
 		bool exportImage(const std::filesystem::path& path) const;
 
-		// Texture à afficher : la sortie du FXAAPass si le mode FXAA est actif
-		// (post-processée), m_OutputTexture sinon.
+		// Texture à afficher : FXAA en priorité si actif, sinon la texture
+		// propre à la technique courante (Forward/Deferred ont leurs propres
+		// textures de sortie).
 		uint32_t getOutputTextureID() const
 		{
-			return (m_Settings.aaMode == AAMode::FXAA) ? m_FXAAPass.getOutputTexture() : m_OutputTexture;
+			if (m_Settings.aaMode == AAMode::FXAA)
+				return m_FXAAPass.getOutputTexture();
+			switch (m_Settings.technique)
+			{
+			case RenderTechnique::Forward:  return m_ForwardPass.getOutputTexture();
+			case RenderTechnique::Deferred: return m_DeferredPass.getOutputTexture();
+			default:                        return m_OutputTexture;
+			}
 		}
 
 	private:
@@ -81,10 +92,13 @@ namespace Fufu
 		uint32_t m_QuadVAO = 0;
 		uint32_t m_QuadVBO = 0;
 
-		GPUScene    m_GPUScene;
-		Skybox      m_Skybox;
-		ComputePass m_ComputePass;
-		FXAAPass    m_FXAAPass;
+		GPUScene     m_GPUScene;
+		Skybox       m_Skybox;
+		ComputePass  m_ComputePass;
+		FXAAPass     m_FXAAPass;
+		GBufferPass  m_GBufferPass;
+		ForwardPass  m_ForwardPass;
+		DeferredPass m_DeferredPass;
 
 		// Accumulation
 		int      m_FrameIndex = 0;

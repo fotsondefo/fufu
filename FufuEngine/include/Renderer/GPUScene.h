@@ -60,6 +60,10 @@ namespace Fufu
 		// GPUMaterial::albedoTexIdx == i pour les matériaux qui l'utilisent).
 		const std::vector<uint32_t>& getMaterialTextures() const { return m_ActiveMaterialTextures; }
 
+		// Nombre de triangles par instance (même ordre que getInstances()).
+		// Utilisé par GBufferPass/ForwardPass pour le draw call SSBO-based.
+		const std::vector<int>& getInstanceTriCounts() const { return m_InstanceTriCounts; }
+
 		// Accès en lecture aux données CPU pour les outils de visualisation
 		// (FufuLab). Les vecteurs restent valides entre deux appels à upload().
 		const std::vector<GPUBVHNode>&           getBLASNodes()          const { return m_BLASNodes; }
@@ -87,6 +91,7 @@ namespace Fufu
 		{
 			int nodeOffset;
 			int triOffset;
+			int triCount;       // nombre de triangles dans ce BLAS
 			uint64_t sourceVersion;
 		};
 
@@ -116,6 +121,7 @@ namespace Fufu
 		std::vector<GPUMaterial> m_Materials;
 		std::vector<GPUBVHNode>  m_BLASNodes;   // BLAS, concaténés par mesh unique
 		std::vector<GPUInstance> m_Instances;
+		std::vector<int>         m_InstanceTriCounts; // mêmes indices que m_Instances
 		std::vector<GPUBVHNode>  m_TLASNodes;
 		std::vector<GPULight>    m_Lights;
 	};

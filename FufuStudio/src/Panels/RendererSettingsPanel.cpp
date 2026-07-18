@@ -18,12 +18,27 @@ namespace FufuStudio
 		int technique = static_cast<int>(settings.technique);
 		if (ImGui::RadioButton("Path Tracing", &technique, 0)) { settings.technique = Fufu::RenderTechnique::PathTracing; changed = true; }
 		ImGui::SameLine();
-		if (ImGui::RadioButton("Ray Tracing", &technique, 1))  { settings.technique = Fufu::RenderTechnique::RayTracing;  changed = true; }
+		if (ImGui::RadioButton("Ray Tracing",  &technique, 1)) { settings.technique = Fufu::RenderTechnique::RayTracing;  changed = true; }
+		ImGui::SameLine();
+		if (ImGui::RadioButton("Forward",      &technique, 2)) { settings.technique = Fufu::RenderTechnique::Forward;     changed = true; }
+		ImGui::SameLine();
+		if (ImGui::RadioButton("Deferred",     &technique, 3)) { settings.technique = Fufu::RenderTechnique::Deferred;    changed = true; }
 
-		if (settings.technique == Fufu::RenderTechnique::PathTracing)
+		switch (settings.technique)
+		{
+		case Fufu::RenderTechnique::PathTracing:
 			ImGui::TextDisabled("GI diffuse stochastique : réaliste, bruit qui converge avec le temps.");
-		else
-			ImGui::TextDisabled("Eclairage direct + reflets/refraction, deterministe : rapide, pas de bruit, pas de GI.");
+			break;
+		case Fufu::RenderTechnique::RayTracing:
+			ImGui::TextDisabled("Eclairage direct + reflets/réfraction, déterministe : rapide, pas de bruit, pas de GI.");
+			break;
+		case Fufu::RenderTechnique::Forward:
+			ImGui::TextDisabled("Rasterisation PBR directe : éclairage Cook-Torrance par fragment, temps réel.");
+			break;
+		case Fufu::RenderTechnique::Deferred:
+			ImGui::TextDisabled("G-Buffer puis éclairage fullscreen : optimal quand beaucoup de lumières.");
+			break;
+		}
 
 		// Mode
 		ImGui::SeparatorText("Mode");

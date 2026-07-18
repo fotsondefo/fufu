@@ -11,7 +11,10 @@ namespace Fufu
 	// (Whitted) — éclairage direct déterministe, réflexions/réfractions
 	// récursives, pas de GI diffuse. Pas de bruit, mais pas de lumière
 	// indirecte réaliste non plus (juste un léger ambiant plat).
-	enum class RenderTechnique { PathTracing, RayTracing };
+	// PathTracing/RayTracing : compute shader.
+	// Forward  : rasterisation PBR directe, éclairage par fragment.
+	// Deferred : rasterisation G-Buffer puis éclairage fullscreen.
+	enum class RenderTechnique { PathTracing, RayTracing, Forward, Deferred };
 
 	// None  : échantillon unique au centre du pixel, pas de lissage — bords
 	//         crantés mais résultat déterministe et le moins coûteux.

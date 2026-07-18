@@ -230,6 +230,7 @@ namespace Fufu
 				BLASRef ref{
 					static_cast<int>(m_BLASNodes.size()),
 					static_cast<int>(m_TrianglePositions.size()),
+					static_cast<int>(positions.size()),
 					sourceVersion
 				};
 				m_BLASNodes.insert(m_BLASNodes.end(), nodes.begin(), nodes.end());
@@ -295,6 +296,7 @@ namespace Fufu
 
 		m_Materials.clear();
 		m_Instances.clear();
+		m_InstanceTriCounts.clear();
 		m_ActiveMaterialTextures.clear();
 		std::unordered_map<std::string, int> frameTextureSlots;
 
@@ -325,6 +327,7 @@ namespace Fufu
 			inst.blasNodeOffset = blasIt->second.nodeOffset;
 			inst.blasTriOffset = blasIt->second.triOffset;
 			m_Instances.push_back(inst);
+			m_InstanceTriCounts.push_back(blasIt->second.triCount);
 		}
 		);
 
@@ -352,6 +355,7 @@ namespace Fufu
 			inst.blasNodeOffset = blasIt->second.nodeOffset;
 			inst.blasTriOffset = blasIt->second.triOffset;
 			m_Instances.push_back(inst);
+			m_InstanceTriCounts.push_back(blasIt->second.triCount);
 		}
 		);
 
@@ -418,9 +422,13 @@ namespace Fufu
 		m_TLASNodes = BVHBuilder::buildFromBounds(instBoundsMin, instBoundsMax, order);
 
 		std::vector<GPUInstance> reorderedInstances(m_Instances.size());
-		for (std::size_t i = 0; i < order.size(); ++i)
+		std::vector<int>         reorderedTriCounts(m_InstanceTriCounts.size());
+		for (std::size_t i = 0; i < order.size(); ++i) {
 			reorderedInstances[i] = m_Instances[static_cast<std::size_t>(order[i])];
-		m_Instances = std::move(reorderedInstances);
+			reorderedTriCounts[i] = m_InstanceTriCounts[static_cast<std::size_t>(order[i])];
+		}
+		m_Instances          = std::move(reorderedInstances);
+		m_InstanceTriCounts  = std::move(reorderedTriCounts);
 
 		// Upload DYNAMIC_DRAW : ces buffers changent potentiellement à chaque
 		// frame (transform, matériau, lumière édités), mais leur taille suit le

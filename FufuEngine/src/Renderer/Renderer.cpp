@@ -5,6 +5,7 @@
 #include "Application/Application.h"
 #include "Application/Profiler.h"
 #include <algorithm>
+#include <glm/gtc/matrix_transform.hpp>
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <stb_image_write.h>
 
@@ -26,6 +27,9 @@ namespace Fufu
 		m_GPUScene.init();
 		m_ComputePass.init();
 		m_FXAAPass.init(width, height);
+		m_GBufferPass.init(width, height);
+		m_ForwardPass.init(width, height);
+		m_DeferredPass.init(width, height);
 
 		FUFU_INFO("Renderer initialized ({}x{})", width, height);
 	}
@@ -41,6 +45,9 @@ namespace Fufu
 		m_Skybox.shutdown();
 		m_ComputePass.shutdown();
 		m_FXAAPass.shutdown();
+		m_GBufferPass.shutdown();
+		m_ForwardPass.shutdown();
+		m_DeferredPass.shutdown();
 	}
 
 	void Renderer::createTextures()
@@ -147,26 +154,86 @@ namespace Fufu
 		frameData.hasSkybox = m_Skybox.isActive() ? 1 : 0;
 		frameData.skyboxIntensity = scene.getEnvironment().skyboxIntensity;
 
-		m_ComputePass.execute(m_GPUScene, gpuCam, frameData, m_OutputTexture, m_AccumTexture,
-			m_Skybox.getTextureID(), m_Width, m_Height);
+		int drawCalls = 0;
+		const float aspect = static_cast<float>(m_Width) / static_cast<float>(m_Height);
+		const bool  useFXAA = (m_Settings.aaMode == AAMode::FXAA);
+		const bool  hasSkybox = m_Skybox.isActive();
+		const float skyboxIntensity = scene.getEnvironment().skyboxIntensity;
 
-		int drawCalls = 1; // le dispatch compute
-		if (m_Settings.aaMode == AAMode::FXAA)
+		if (m_Settings.technique == RenderTechnique::Forward)
 		{
-			m_FXAAPass.execute(m_OutputTexture, m_QuadVAO, m_Width, m_Height);
+			// Projection perspective (fov = champ vertical total, en radians comme le compute)
+			glm::mat4 proj = glm::perspective(gpuCam.fov, aspect, gpuCam.nearPlane, 10000.f);
+			glm::mat4 vp   = proj * glm::inverse(camTransform.getTransform());
+
+			m_ForwardPass.render(m_GPUScene, vp,
+				glm::vec3(gpuCam.position),
+				glm::vec3(gpuCam.forward), glm::vec3(gpuCam.right), glm::vec3(gpuCam.up),
+				gpuCam.fov, aspect,
+				m_QuadVAO,
+				m_Skybox.getTextureID(), hasSkybox, skyboxIntensity,
+				m_Settings.exposure,
+				m_Width, m_Height);
+
+			drawCalls = static_cast<int>(m_GPUScene.getInstanceCount()) + 1; // +1 ciel
+
+			if (useFXAA)
+			{
+				m_FXAAPass.execute(m_ForwardPass.getOutputTexture(), m_QuadVAO, m_Width, m_Height);
+				++drawCalls;
+			}
+		}
+		else if (m_Settings.technique == RenderTechnique::Deferred)
+		{
+			glm::mat4 proj = glm::perspective(gpuCam.fov, aspect, gpuCam.nearPlane, 10000.f);
+			glm::mat4 vp   = proj * glm::inverse(camTransform.getTransform());
+
+			// Étape 1 : G-Buffer
+			m_GBufferPass.render(m_GPUScene, vp, m_Width, m_Height);
+			drawCalls = static_cast<int>(m_GPUScene.getInstanceCount());
+
+			// Étape 2 : éclairage différé fullscreen
+			m_DeferredPass.render(m_GPUScene,
+				m_GBufferPass.getPositionTexture(),
+				m_GBufferPass.getNormalTexture(),
+				m_GBufferPass.getUVTexture(),
+				m_QuadVAO,
+				m_Skybox.getTextureID(), hasSkybox, skyboxIntensity,
+				glm::vec3(gpuCam.position),
+				glm::vec3(gpuCam.forward), glm::vec3(gpuCam.right), glm::vec3(gpuCam.up),
+				gpuCam.fov, aspect,
+				m_Settings.exposure,
+				m_Width, m_Height);
 			++drawCalls;
+
+			if (useFXAA)
+			{
+				m_FXAAPass.execute(m_DeferredPass.getOutputTexture(), m_QuadVAO, m_Width, m_Height);
+				++drawCalls;
+			}
+		}
+		else
+		{
+			// PathTracing ou RayTracing : compute shader existant
+			m_ComputePass.execute(m_GPUScene, gpuCam, frameData, m_OutputTexture, m_AccumTexture,
+				m_Skybox.getTextureID(), m_Width, m_Height);
+			drawCalls = 1;
+
+			if (useFXAA)
+			{
+				m_FXAAPass.execute(m_OutputTexture, m_QuadVAO, m_Width, m_Height);
+				++drawCalls;
+			}
+
+			// Accumulation uniquement pour les techniques compute
+			if (m_Settings.mode == RenderMode::Accumulation &&
+				m_FrameIndex < m_Settings.maxAccumFrames)
+				++m_FrameIndex;
+
+			++m_TAAFrameIndex;
 		}
 
 		Profiler::get().setCounters(m_GPUScene.getTriangleCount(), m_GPUScene.getInstanceCount(), drawCalls);
-
-		// Incr�menter uniquement en accumulation et si pas � la limite
-		if (m_Settings.mode == RenderMode::Accumulation &&
-			m_FrameIndex < m_Settings.maxAccumFrames)
-			++m_FrameIndex;
-
-		// Contrairement � m_FrameIndex, le compteur TAA avance toujours : c'est
-		// ce qui lui permet de lisser aussi en RenderMode::Realtime.
-		++m_TAAFrameIndex;
 	}
 
 	// ----------------------------------------------------------------
@@ -182,6 +249,9 @@ namespace Fufu
 		glDeleteTextures(1, &m_AccumTexture);
 		createTextures();
 		m_FXAAPass.resize(width, height);
+		m_GBufferPass.resize(width, height);
+		m_ForwardPass.resize(width, height);
+		m_DeferredPass.resize(width, height);
 		resetAccumulation();
 	}
 
@@ -209,14 +279,15 @@ namespace Fufu
 			}
 		}
 
-		// Les deux textures potentiellement affichées (voir getOutputTextureID)
-		// doivent être effacées, sinon FXAA continuerait d'afficher l'ancienne
-		// scène alors que m_OutputTexture, lui, est bien effacé.
-		glBindTexture(GL_TEXTURE_2D, m_OutputTexture);
-		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, m_Width, m_Height, GL_RGBA, GL_FLOAT, s_ClearBuffer.data());
-
-		glBindTexture(GL_TEXTURE_2D, m_FXAAPass.getOutputTexture());
-		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, m_Width, m_Height, GL_RGBA, GL_FLOAT, s_ClearBuffer.data());
+		// Toutes les textures potentiellement affichées doivent être effacées.
+		auto clearTex = [&](uint32_t id) {
+			glBindTexture(GL_TEXTURE_2D, id);
+			glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, m_Width, m_Height, GL_RGBA, GL_FLOAT, s_ClearBuffer.data());
+		};
+		clearTex(m_OutputTexture);
+		clearTex(m_FXAAPass.getOutputTexture());
+		clearTex(m_ForwardPass.getOutputTexture());
+		clearTex(m_DeferredPass.getOutputTexture());
 	}
 
 	bool Renderer::exportImage(const std::filesystem::path& path) const
