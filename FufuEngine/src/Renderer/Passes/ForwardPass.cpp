@@ -12,8 +12,8 @@ static RHI::Ref<RHI::RHIPipeline> makeGraphicsPipeline(
     const std::string& fragFile,
     const RHI::GraphicsPipelineDesc& baseDesc)
 {
-    auto vs = ctx.createShader({ RHI::ShaderStage::Vertex,   loadShaderSource(vertFile) });
-    auto fs = ctx.createShader({ RHI::ShaderStage::Fragment, loadShaderSource(fragFile) });
+    auto vs = ctx.createShader({ RHI::ShaderStage::Vertex,   loadShaderSource(vertFile), vertFile });
+    auto fs = ctx.createShader({ RHI::ShaderStage::Fragment, loadShaderSource(fragFile), fragFile });
     RHI::GraphicsPipelineDesc desc = baseDesc;
     desc.vertexShader   = vs;
     desc.fragmentShader = fs;

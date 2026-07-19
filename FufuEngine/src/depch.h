@@ -17,9 +17,14 @@
 #include <spdlog/spdlog.h>
 
 // Core
-#include <glad/glad.h>
-#define GLFW_INCLUDE_NONE
-#include <GLFW/glfw3.h>
+#ifndef FUFU_VK_BACKEND
+#  include <glad/glad.h>
+#  define GLFW_INCLUDE_NONE
+#  include <GLFW/glfw3.h>
+#else
+#  define GLFW_INCLUDE_VULKAN
+#  include <GLFW/glfw3.h>
+#endif
 #include "Events/Event.h"
 #include "Events/ApplicationEvents.h"
 #include "Events/KeyEvents.h"

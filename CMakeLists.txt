@@ -12,9 +12,10 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/build/bin)
 set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 
 # Options de build
-option(FUFU_BUILD_STUDIO  "Build FufuStudio (Editor)"  ON)
-option(FUFU_BUILD_RUNTIME "Build FufuRuntime"          ON)
-option(FUFU_BUILD_LAB     "Build FufuLab (Research)"   ON)
+option(FUFU_BUILD_STUDIO    "Build FufuStudio (Editor)"  ON)
+option(FUFU_BUILD_RUNTIME   "Build FufuRuntime"          ON)
+option(FUFU_BUILD_LAB       "Build FufuLab (Research)"   ON)
+option(FUFU_BACKEND_VULKAN  "Enable Vulkan backend"      ON)
 
 if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.30")
     cmake_policy(SET CMP0169 OLD)
@@ -22,6 +23,11 @@ endif()
 
 # Dépendances externes via vcpkg ou find_package
 find_package(OpenGL REQUIRED)
+
+if(FUFU_BACKEND_VULKAN)
+    find_package(Vulkan REQUIRED)
+    message(STATUS "Vulkan SDK found: ${Vulkan_INCLUDE_DIRS}")
+endif()
 
 include(FetchContent)
 

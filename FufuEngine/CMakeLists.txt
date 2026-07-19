@@ -25,7 +25,7 @@ target_include_directories(FufuEngine
         ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
-# glad comme cible s�par�e en C pur � sans PCH C++
+# glad comme cible s�par�e en C pur � sans PCH C++
 add_library(glad_internal STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/vendor/glad/src/glad.c
 )
@@ -72,7 +72,7 @@ FetchContent_GetProperties(stb)
 if(NOT stb_POPULATED)
     FetchContent_Populate(stb)
 endif()
-# stb est header-only, on expose juste le r�pertoire
+# stb est header-only, on expose juste le r�pertoire
 target_include_directories(FufuEngine PUBLIC ${stb_SOURCE_DIR})
 
 target_link_libraries(FufuEngine
@@ -98,3 +98,51 @@ target_compile_options(FufuEngine PRIVATE
     $<$<CXX_COMPILER_ID:MSVC>:/FI${CMAKE_CURRENT_SOURCE_DIR}/src/depch.h>
     $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-include ${CMAKE_CURRENT_SOURCE_DIR}/src/depch.h>
 )
+
+# ── Backend Vulkan (optionnel, nécessite le Vulkan SDK) ──────────────────────
+if(FUFU_BACKEND_VULKAN)
+    # VulkanMemoryAllocator
+    FetchContent_Declare(VMA
+        GIT_REPOSITORY https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator.git
+        GIT_TAG        v3.1.0
+    )
+    FetchContent_GetProperties(VMA)
+    if(NOT VMA_POPULATED)
+        FetchContent_Populate(VMA)
+    endif()
+    # VMA est header-only
+    target_include_directories(FufuEngine PRIVATE ${vma_SOURCE_DIR}/include)
+
+    # glslang pour la compilation GLSL → SPIR-V au runtime
+    set(ENABLE_GLSLANG_BINARIES  OFF CACHE BOOL "" FORCE)
+    set(ENABLE_SPVREMAPPER       OFF CACHE BOOL "" FORCE)
+    set(ENABLE_GLSLANG_INSTALL   OFF CACHE BOOL "" FORCE)
+    set(BUILD_TESTING            OFF CACHE BOOL "" FORCE)
+    set(ENABLE_OPT               OFF CACHE BOOL "" FORCE)  # pas de SPIRV-Tools
+    FetchContent_Declare(glslang
+        GIT_REPOSITORY https://github.com/KhronosGroup/glslang.git
+        GIT_TAG        15.1.0
+    )
+    FetchContent_GetProperties(glslang)
+    if(NOT glslang_POPULATED)
+        FetchContent_Populate(glslang)
+        add_subdirectory(${glslang_SOURCE_DIR} ${glslang_BINARY_DIR})
+    endif()
+
+    target_link_libraries(FufuEngine PRIVATE
+        Vulkan::Vulkan
+        glslang
+        SPIRV
+        glslang-default-resource-limits
+    )
+    target_compile_definitions(FufuEngine PUBLIC FUFU_BACKEND_VULKAN)
+    target_include_directories(FufuEngine PRIVATE ${Vulkan_INCLUDE_DIRS})
+
+    # Les TU VK reçoivent FUFU_VK_BACKEND pour neutraliser glad dans depch.h
+    file(GLOB_RECURSE _VK_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/RHI/VK/*.cpp")
+    foreach(_f IN LISTS _VK_SOURCES)
+        set_source_files_properties(${_f} PROPERTIES
+            COMPILE_DEFINITIONS "FUFU_VK_BACKEND"
+        )
+    endforeach()
+endif()
