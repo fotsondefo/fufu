@@ -115,7 +115,6 @@ void DeferredPass::render(RHI::RHICommandList& cmd,
     glActiveTexture(GL_TEXTURE21);
     glBindTexture(GL_TEXTURE_2D, ssaoTex);
 
-<<<<<<< HEAD
     // IBL textures → units 22 / 23 / 24
     glActiveTexture(GL_TEXTURE22);
     glBindTexture(GL_TEXTURE_2D, iblIrradiance);
@@ -127,9 +126,6 @@ void DeferredPass::render(RHI::RHICommandList& cmd,
     glBindTexture(GL_TEXTURE_2D, iblBrdfLut);
 
     // Uniforms outside UBO
-=======
-    // u_SSAOEnabled: uniform outside UBO
->>>>>>> c984e4df3b1c22d177ab4019fa05d517ae4c3474
     GLint prog = 0;
     glGetIntegerv(GL_CURRENT_PROGRAM, &prog);
     glUniform1i(glGetUniformLocation(prog, "u_SSAOEnabled"), ssaoEnabled ? 1 : 0);

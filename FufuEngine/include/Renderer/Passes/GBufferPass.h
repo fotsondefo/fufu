@@ -18,13 +18,10 @@ namespace Fufu
 		void shutdown();
 		void resize (RHI::RHIContext& ctx, int width, int height);
 
-<<<<<<< HEAD
 		// Recompile and hot-swap the pipeline without touching framebuffer attachments.
 		// Called by the Renderer when the FileWatcher detects a shader change.
 		void reloadShaders(RHI::RHIContext& ctx);
-
-=======
->>>>>>> c984e4df3b1c22d177ab4019fa05d517ae4c3474
+		
 		// skinnedBufHandle: GL buffer handle of the CPU-skinned position buffer
 		// (SSBO slot 2 override). Pass 0 to use the static bind-pose buffer.
 		void render(RHI::RHICommandList& cmd,

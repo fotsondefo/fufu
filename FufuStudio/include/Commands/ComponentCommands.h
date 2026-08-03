@@ -118,7 +118,7 @@ namespace FufuStudio
 
 			if (m_Entity.hasComponent<Fufu::MeshComponent>())
 			{
-				m_Entity.getComponent<Fufu::MeshComponent>() = Fufu::MeshComponent(m_NewPath, m_NewID);
+				m_Entity.getComponent<Fufu::MeshComponent>() = Fufu::MeshComponent{ m_NewPath, m_NewID };
 				if (auto* scene = m_Entity.getScene()) scene->markDirty();
 			}
 			else

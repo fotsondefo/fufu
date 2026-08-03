@@ -288,10 +288,7 @@ namespace Fufu
 		m_Instances.clear();
 		m_InstanceTriCounts.clear();
 		m_InstanceEntities.clear();
-<<<<<<< HEAD
 		m_InstanceAABBs.clear();
-=======
->>>>>>> c984e4df3b1c22d177ab4019fa05d517ae4c3474
 		m_ActiveMaterialTextures.clear();
 		std::unordered_map<std::string, int> frameTextureSlots;
 
@@ -351,7 +348,6 @@ namespace Fufu
 			m_Instances.push_back(inst);
 			m_InstanceTriCounts.push_back(blasIt->second.triCount);
 			m_InstanceEntities.push_back(e);
-<<<<<<< HEAD
 
 			// World-space AABB for CPU frustum culling
 			const GPUBVHNode& blasRoot = m_BLASNodes[static_cast<std::size_t>(blasIt->second.nodeOffset)];
@@ -371,8 +367,6 @@ namespace Fufu
 				aabb.max = glm::max(aabb.max, wc);
 			}
 			m_InstanceAABBs.push_back(aabb);
-=======
->>>>>>> c984e4df3b1c22d177ab4019fa05d517ae4c3474
 		});
 
 		scene.each<TransformComponent, MeshComponent, GroomComponent>(
@@ -403,12 +397,9 @@ namespace Fufu
 			m_Instances.push_back(inst);
 			m_InstanceTriCounts.push_back(blasIt->second.triCount);
 			m_InstanceEntities.push_back(entt::null); // grooms have no AnimatorComponent
-<<<<<<< HEAD
 			// Grooms are screen-space decorators — give them a trivial AABB
 			// (they will never be frustum-culled independently of their mesh).
 			m_InstanceAABBs.push_back({ glm::vec3(-1e30f), glm::vec3(1e30f) });
-=======
->>>>>>> c984e4df3b1c22d177ab4019fa05d517ae4c3474
 		});
 
 		m_Lights.clear();
@@ -482,33 +473,21 @@ namespace Fufu
 		std::vector<GPUInstance>  reorderedInstances(m_Instances.size());
 		std::vector<int>          reorderedTriCounts(m_InstanceTriCounts.size());
 		std::vector<entt::entity> reorderedEntities(m_InstanceEntities.size());
-<<<<<<< HEAD
 		std::vector<AABB>         reorderedAABBs(m_InstanceAABBs.size());
 		for (std::size_t i = 0; i < order.size(); ++i)
 		{
 			std::size_t src       = static_cast<std::size_t>(order[i]);
-=======
-		for (std::size_t i = 0; i < order.size(); ++i)
-		{
-			std::size_t src      = static_cast<std::size_t>(order[i]);
->>>>>>> c984e4df3b1c22d177ab4019fa05d517ae4c3474
 			reorderedInstances[i] = m_Instances[src];
 			reorderedTriCounts[i] = m_InstanceTriCounts[src];
 			reorderedEntities[i]  = (src < m_InstanceEntities.size())
 			                         ? m_InstanceEntities[src] : entt::null;
-<<<<<<< HEAD
 			reorderedAABBs[i]     = (src < m_InstanceAABBs.size())
 			                         ? m_InstanceAABBs[src] : AABB{ glm::vec3(-1e30f), glm::vec3(1e30f) };
-=======
->>>>>>> c984e4df3b1c22d177ab4019fa05d517ae4c3474
 		}
 		m_Instances         = std::move(reorderedInstances);
 		m_InstanceTriCounts = std::move(reorderedTriCounts);
 		m_InstanceEntities  = std::move(reorderedEntities);
-<<<<<<< HEAD
 		m_InstanceAABBs     = std::move(reorderedAABBs);
-=======
->>>>>>> c984e4df3b1c22d177ab4019fa05d517ae4c3474
 
 		ensureBuffer(m_MaterialBuffer,
 			m_Materials.data(), m_Materials.size() * sizeof(GPUMaterial),

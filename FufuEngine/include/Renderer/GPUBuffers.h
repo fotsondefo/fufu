@@ -131,7 +131,6 @@ namespace Fufu
 
 	struct alignas(16) GPUMaterial
 	{
-<<<<<<< HEAD
 		glm::vec4 albedo;         // rgb = color, a = opacity
 		float     metallic;
 		float     roughness;
@@ -141,15 +140,6 @@ namespace Fufu
 		int       normalTexIdx;   // tangent-space normal map (-1 = flat)
 		int       ormTexIdx;      // ORM packed: R=AO, G=Roughness, B=Metallic (-1 = use constants)
 		float     _pad;
-=======
-		glm::vec4 albedo;       // rgb = color, a = opacity
-		float     metallic;
-		float     roughness;
-		float     emissive;
-		float     ior;          // Index of refraction (glass = 1.5)
-		int       albedoTexIdx; // -1 = no texture
-		float     _pad[3];
->>>>>>> c984e4df3b1c22d177ab4019fa05d517ae4c3474
 	};
 
 	// Directional: positionOrDirection.xyz = direction from a surface TOWARDS

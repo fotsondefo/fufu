@@ -52,16 +52,13 @@ namespace Fufu
 				tri.uv0 = a.uv;
 				tri.uv1 = b.uv;
 				tri.uv2 = c.uv;
-<<<<<<< HEAD
+				
 				// Submesh index: survives BVH reorder (the combined array is reordered
 				// in-place but each element keeps its materialIndex). GPUScene reads
 				// this as an offset into the per-instance material array, so each
 				// submesh can have its own material (SubMeshMaterialsComponent).
 				tri.materialIndex = submeshIdx;
-=======
-				tri.materialIndex = 0; // material comes from the instance, not from the shared BLAS
-				// Skinning weights (carried through BVH reorder)
->>>>>>> c984e4df3b1c22d177ab4019fa05d517ae4c3474
+
 				if (m_HasBones)
 				{
 					tri.boneIdx0 = a.boneIndices; tri.boneWgt0 = a.boneWeights;

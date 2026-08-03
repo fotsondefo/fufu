@@ -9,17 +9,11 @@
 namespace Fufu
 {
 	// Owns the GPU texture of an equirectangular skybox (RGBA32F if the source
-<<<<<<< HEAD
 	// is a .hdr, RGBA8 otherwise) and the three IBL textures derived from it
 	// (irradiance map, pre-filtered env map, BRDF LUT).
 	// Reloads/rebuilds when the path changes; re-bakes IBL whenever the env
 	// map is replaced.
-=======
-	// is a .hdr, RGBA8 otherwise). Reloads/rebuilds the texture only when the
-	// path changes (avoids re-uploading a potentially heavy texture every frame
-	// when sceneNeedsUpdate() already forces a full geometry re-upload every
-	// frame).
->>>>>>> c984e4df3b1c22d177ab4019fa05d517ae4c3474
+
 	class Skybox
 	{
 	public:

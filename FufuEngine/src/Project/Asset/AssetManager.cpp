@@ -305,12 +305,8 @@ namespace Fufu
 			aiProcess_GenNormals        |
 			aiProcess_CalcTangentSpace  |
 			aiProcess_FlipUVs           |
-<<<<<<< HEAD
 			aiProcess_LimitBoneWeights  |
 			aiProcess_GlobalScale
-=======
-			aiProcess_LimitBoneWeights
->>>>>>> c984e4df3b1c22d177ab4019fa05d517ae4c3474
 		);
 
 		if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)

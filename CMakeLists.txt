@@ -15,7 +15,7 @@ set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 option(FUFU_BUILD_STUDIO    "Build FufuStudio (Editor)"  ON)
 option(FUFU_BUILD_RUNTIME   "Build FufuRuntime"          ON)
 option(FUFU_BUILD_LAB       "Build FufuLab (Research)"   ON)
-option(FUFU_BACKEND_VULKAN  "Enable Vulkan backend"      ON)
+option(FUFU_BACKEND_VULKAN  "Enable Vulkan backend"      OFF)
 
 if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.30")
     cmake_policy(SET CMP0169 OLD)
@@ -28,6 +28,8 @@ if(FUFU_BACKEND_VULKAN)
     find_package(Vulkan REQUIRED)
     message(STATUS "Vulkan SDK found: ${Vulkan_INCLUDE_DIRS}")
 endif()
+
+add_compile_definitions(_ENABLE_EXTENDED_ALIGNED_STORAGE)
 
 include(FetchContent)
 
